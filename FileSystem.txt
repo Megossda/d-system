@@ -1,0 +1,178 @@
+# D&D Combat System - File Organization Plan
+
+## Current Issues:
+- All enemies in one file
+- AI brains scattered
+- Actions getting crowded
+- Hard to add new content
+
+## Recommended Structure:
+
+```
+DnD_Combat_System/
+├── main.py                          # Main entry point
+├── combat.py                        # Core combat engine
+├── range_manager.py                 # Range and positioning system
+├── core.py                          # Core dice and utility functions
+├── base_character.py                # Base character class
+│
+├── characters/                      # Player character classes
+│   ├── __init__.py
+│   ├── base_character.py           # Move here eventually
+│   ├── fighter.py
+│   ├── paladin.py
+│   ├── rogue.py
+│   ├── wizard.py
+│   └── subclasses/
+│       ├── __init__.py
+│       └── paladin_oaths.py
+│
+├── enemies/                         # Enemy creatures organized by CR/type
+│   ├── __init__.py
+│   ├── base_enemy.py               # Base enemy class
+│   ├── cr_0_quarter/               # CR 0-1/4 enemies
+│   │   ├── __init__.py
+│   │   └── goblin.py
+│   ├── cr_half_1/                  # CR 1/2-1 enemies
+│   │   ├── __init__.py
+│   │   └── hobgoblin_warrior.py
+│   ├── cr_2_5/                     # CR 2-5 enemies
+│   │   ├── __init__.py
+│   │   └── giant_constrictor_snake.py
+│   └── cr_higher/                  # CR 6+ enemies
+│       └── __init__.py
+│
+├── ai/                             # AI behavior systems
+│   ├── __init__.py
+│   ├── base_ai.py                  # Base AI brain
+│   ├── character_ai/               # Player character AI
+│   │   ├── __init__.py
+│   │   ├── paladin_ai.py
+│   │   ├── fighter_ai.py
+│   │   └── wizard_ai.py
+│   ├── enemy_ai/                   # Enemy AI behaviors
+│   │   ├── __init__.py
+│   │   ├── humanoid_ai.py          # For goblins, hobgoblins
+│   │   ├── beast_ai.py             # For animals, monsters
+│   │   └── special_ai.py           # For unique creatures
+│   └── tactical/                   # Advanced tactical systems
+│       ├── __init__.py
+│       ├── healing_ai.py
+│       ├── positioning_ai.py
+│       └── spellcasting_ai.py
+│
+├── actions/                        # Combat actions
+│   ├── __init__.py
+│   ├── base_actions.py             # Core action classes
+│   ├── attack_actions.py           # Attack variations
+│   ├── spell_actions.py            # Spellcasting actions
+│   ├── movement_actions.py         # Movement and positioning
+│   └── special_actions.py          # Unique abilities
+│
+├── spells/                         # Magic system
+│   ├── __init__.py
+│   ├── base_spell.py
+│   ├── cantrips/
+│   │   └── __init__.py
+│   ├── level_1/
+│   │   ├── __init__.py
+│   │   ├── cure_wounds.py
+│   │   ├── guiding_bolt.py
+│   │   └── searing_smite.py
+│   ├── level_2/
+│   │   └── __init__.py
+│   └── spell_schools/              # Organized by school
+│       ├── __init__.py
+│       ├── evocation.py
+│       ├── abjuration.py
+│       └── enchantment.py
+│
+├── equipment/                      # Weapons, armor, items
+│   ├── __init__.py
+│   ├── weapons/
+│   │   ├── __init__.py
+│   │   ├── base_weapon.py
+│   │   ├── simple_weapons/
+│   │   ├── martial_weapons/
+│   │   └── magic_weapons/
+│   ├── armor/
+│   │   ├── __init__.py
+│   │   ├── light_armor/
+│   │   ├── medium_armor/
+│   │   ├── heavy_armor/
+│   │   └── shields/
+│   └── magic_items/
+│       └── __init__.py
+│
+├── effects/                        # Status effects and conditions
+│   ├── __init__.py
+│   ├── base_effect.py
+│   ├── conditions/                 # Standard D&D conditions
+│   │   ├── __init__.py
+│   │   ├── grappled.py
+│   │   ├── poisoned.py
+│   │   └── charmed.py
+│   └── spell_effects/              # Spell-specific effects
+│       ├── __init__.py
+│       └── searing_smite_effect.py
+│
+├── systems/                        # Game systems
+│   ├── __init__.py
+│   ├── initiative.py
+│   ├── advantage_system.py
+│   ├── damage_system.py
+│   ├── healing_system.py
+│   └── experience_system.py
+│
+├── data/                          # Game data files
+│   ├── enemy_stats.json          # Enemy stat blocks
+│   ├── spell_data.json           # Spell definitions
+│   ├── weapon_data.json          # Weapon statistics
+│   └── class_features.json       # Class abilities
+│
+├── utils/                         # Utility functions
+│   ├── __init__.py
+│   ├── dice_roller.py
+│   ├── formatters.py              # Output formatting
+│   └── validators.py              # Input validation
+│
+└── tests/                         # Unit tests
+    ├── __init__.py
+    ├── test_combat.py
+    ├── test_characters.py
+    ├── test_spells.py
+    └── test_ai.py
+```
+
+## Migration Strategy:
+
+### Phase 1: Immediate Improvements
+1. Split `enemies.py` into separate files by CR
+2. Move AI brains to dedicated `ai/` folder
+3. Separate action types into `actions/` folder
+
+### Phase 2: Advanced Organization
+1. Create character class hierarchy
+2. Implement spell school organization
+3. Add comprehensive effect system
+
+### Phase 3: Data-Driven Design
+1. Move static data to JSON files
+2. Create dynamic enemy/spell loading
+3. Add configuration system
+
+## Benefits:
+- **Scalability**: Easy to add new enemies, spells, classes
+- **Maintainability**: Clear separation of concerns
+- **Collaboration**: Multiple developers can work on different systems
+- **Testing**: Isolated components are easier to test
+- **Performance**: Only load what you need
+
+## Import Examples:
+```python
+# Clean, organized imports
+from enemies.cr_2_5.giant_constrictor_snake import GiantConstrictorSnake
+from ai.enemy_ai.beast_ai import GiantConstrictorSnakeAI
+from spells.level_1.guiding_bolt import GuidingBolt
+from actions.special_actions import MultiattackAction
+```
