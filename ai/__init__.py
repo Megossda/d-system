@@ -1,25 +1,8 @@
-# File: actions/special_actions.py
-from .base_actions import Action
+"""AI behavior systems for characters and enemies."""
 
-class LayOnHandsAction(Action):
-    """Represents the Paladin's Lay on Hands ability."""
-    def __init__(self):
-        super().__init__("Lay on Hands")
+from .base_ai import AIBrain
+from .character_ai.paladin_ai import PaladinAIBrain
+from .enemy_ai.humanoid_ai import HobgoblinWarriorAI
+from .enemy_ai.beast_ai import GiantConstrictorSnakeAI
 
-    def execute(self, performer, target=None, action_type="BONUS ACTION"):
-        target_to_heal = target or performer
-        heal_amount = performer.get_optimal_lay_on_hands_amount(target_to_heal)
-        performer.use_lay_on_hands(heal_amount, target_to_heal)
-
-class MultiattackAction(Action):
-    """An action that represents a creature's multiattack."""
-    def __init__(self, creature):
-        super().__init__(f"Multiattack")
-        self.creature = creature
-
-    def execute(self, performer, target, action_type="ACTION"):
-        if hasattr(performer, 'multiattack'):
-            performer.multiattack(target, action_type)
-        else:
-            # Fallback to regular attack
-            performer.attack(target, action_type)
+__all__ = ['AIBrain', 'PaladinAIBrain', 'HobgoblinWarriorAI', 'GiantConstrictorSnakeAI']
