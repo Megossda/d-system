@@ -44,75 +44,7 @@ class OpportunityAttack(Action):
         print(f"** {performer.name} takes an Opportunity Attack against {target.name}! **")
         performer.attack(target, action_type)
 
-# File: actions/spell_actions.py
-from .base_actions import Action
 
-class CastSpellAction(Action):
-    def __init__(self, spell):
-        super().__init__(f"Cast {spell.name}")
-        self.spell = spell
-
-    def execute(self, performer, target=None, action_type="ACTION"):
-        """Executes the spell cast, including spending the slot."""
-        if performer.spell_slots.get(self.spell.level, 0) > 0:
-            log_message = f"{action_type}: {performer.name} expends a level {self.spell.level} spell slot ({performer.spell_slots[self.spell.level]-1} remaining), to cast {self.spell.name} ({self.spell.school})"
-            if "Ranged" in self.spell.attack_save or "Melee" in self.spell.attack_save:
-                 if target:
-                    log_message += f" at {target.name} (AC: {target.ac})."
-            else:
-                log_message += "."
-            print(log_message)
-            performer.spell_slots[self.spell.level] -= 1
-            performer.cast_spell(self.spell, target, action_type)
-        else:
-            print(f"{action_type}: {performer.name} tries to cast {self.spell.name} but is out of level {self.spell.level} slots!")
-
-# File: actions/special_actions.py
-from .base_actions import Action
-
-class LayOnHandsAction(Action):
-    """Represents the Paladin's Lay on Hands ability."""
-    def __init__(self):
-        super().__init__("Lay on Hands")
-
-    def execute(self, performer, target=None, action_type="BONUS ACTION"):
-        target_to_heal = target or performer
-        heal_amount = performer.get_optimal_lay_on_hands_amount(target_to_heal)
-        performer.use_lay_on_hands(heal_amount, target_to_heal)
-
-class MultiattackAction(Action):
-    """An action that represents a creature's multiattack."""
-    def __init__(self, creature):
-        super().__init__(f"Multiattack")
-        self.creature = creature
-
-    def execute(self, performer, target, action_type="ACTION"):
-        if hasattr(performer, 'multiattack'):
-            performer.multiattack(target, action_type)
-        else:
-            # Fallback to regular attack
-            performer.attack(target, action_type)
-
-# File: spells/__init__.py
-"""Magic system - spells organized by level and school."""
-
-# Import commonly used spells
-from .level_1.cure_wounds import cure_wounds
-from .level_1.guiding_bolt import guiding_bolt
-from .level_1.searing_smite import searing_smite
-
-__all__ = ['cure_wounds', 'guiding_bolt', 'searing_smite']
-
-# File: spells/level_1/__init__.py
-"""1st level spells."""
-
-from .cure_wounds import cure_wounds
-from .guiding_bolt import guiding_bolt
-from .searing_smite import searing_smite
-from .heroism import heroism
-from .bless import bless
-
-__all__ = ['cure_wounds', 'guiding_bolt', 'searing_smite', 'heroism', 'bless']
 
 # File: spells/level_1/cure_wounds.py
 from ..base_spell import Spell
@@ -169,55 +101,7 @@ class GuidingBolt(Spell):
 # Create the instance
 guiding_bolt = GuidingBolt()
 
-# File: spells/level_1/searing_smite.py
-from ..base_spell import Spell
 
-class SearingSmite(Spell):
-    def __init__(self):
-        super().__init__(name="Searing Smite", level=1, school="Evocation", casting_time="1 Bonus Action",
-                         requires_concentration=True, damage_type="Fire")
 
-    def cast(self, caster, target=None):
-        caster.active_smites.append(self)
-        if self.requires_concentration:
-            caster.start_concentrating(self)
-        return True
 
-# Create the instance
-searing_smite = SearingSmite()
 
-# File: spells/level_1/heroism.py
-from ..base_spell import Spell
-
-class Heroism(Spell):
-    """The Heroism spell."""
-
-    def __init__(self):
-        super().__init__(name="Heroism", level=1, school="Enchantment", requires_concentration=True)
-
-    def cast(self, caster, target=None):
-        """A creature you touch is imbued with bravery."""
-        target_to_affect = target or caster
-        print(f"** {target_to_affect.name} is imbued with bravery and feels heroic! **")
-        # In a full implementation, this would grant temporary HP each round.
-        caster.start_concentrating(self)
-        return True
-
-# Create the instance
-heroism = Heroism()
-
-# File: spells/level_1/bless.py
-from ..base_spell import Spell
-
-class Bless(Spell):
-    def __init__(self):
-        super().__init__(name="Bless", level=1, school="Enchantment", requires_concentration=True)
-
-    def cast(self, caster, target=None):
-        # In a full implementation, this would affect multiple targets and add 1d4 to their attack rolls and saves.
-        print(f"** {caster.name}'s allies feel divinely favored! **")
-        caster.start_concentrating(self)
-        return True
-
-# Create the instance
-bless = Bless()
