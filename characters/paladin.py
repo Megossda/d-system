@@ -1,9 +1,9 @@
 from core import roll_d20, roll, get_ability_modifier
-from base_character import Character
-from spells.level_1 import searing_smite, cure_wounds, guiding_bolt
+from .base_character import Character  # FIXED
+from spells.level_1.level_1 import searing_smite, cure_wounds, guiding_bolt
 from effects import SearingSmiteEffect
 from actions import CastSpellAction, LayOnHandsAction
-from ai_brain import PaladinAIBrain
+from ai.character_ai.paladin_ai import PaladinAIBrain  # FIXED
 
 
 class Paladin(Character):

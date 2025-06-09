@@ -1,6 +1,6 @@
 from core import roll_d20, roll, get_ability_modifier, XP_FOR_NEXT_LEVEL, XP_FROM_CR
 from actions import AttackAction, DodgeAction, OpportunityAttack, CastSpellAction
-from ai_brain import AIBrain
+from ai.base_ai import AIBrain  # FIXED
 import math
 
 
