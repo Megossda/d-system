@@ -371,14 +371,14 @@ class Character:
         return get_ability_modifier(self.stats['str'])
 
     def break_grapple_attempt(self, grappler):
-        """Attempt to break free from a grapple using Athletics or Acrobatics"""
+        """Attempt to break free from a grapple using Athletics or Acrobatics (PHB 2024)"""
         print(f"--- {self.name} attempts to break free from {grappler.name}'s grapple! ---")
 
-        # Player can choose Athletics (STR) or Acrobatics (DEX)
-        # For AI, choose the better modifier
+        # Choose between Athletics (STR) or Acrobatics (DEX)
         athletics_mod = get_ability_modifier(self.stats['str'])
         acrobatics_mod = get_ability_modifier(self.stats['dex'])
 
+        # For AI, choose the better modifier
         if athletics_mod >= acrobatics_mod:
             chosen_skill = "Athletics"
             my_modifier = athletics_mod
@@ -388,18 +388,26 @@ class Character:
             my_modifier = acrobatics_mod
             ability = "DEX"
 
-        # Contested check
-        my_roll, _ = roll_d20(disadvantage=True)  # Grappled creatures have disadvantage
-        my_total = my_roll + my_modifier
+        # Add proficiency if character has it
+        if chosen_skill in self.skill_proficiencies:
+            my_modifier += self.get_proficiency_bonus()
+            prof_text = f" +{self.get_proficiency_bonus()} (Prof)"
+        else:
+            prof_text = ""
 
-        grappler_roll, _ = roll_d20()
-        grappler_modifier = get_ability_modifier(grappler.stats['str'])
-        grappler_total = grappler_roll + grappler_modifier
+        # Make the escape attempt (NO disadvantage in PHB 2024)
+        escape_roll, _ = roll_d20()
+        my_total = escape_roll + my_modifier
 
-        print(f"{self.name} ({chosen_skill}): {my_roll} (1d20, disadvantage) +{my_modifier} ({ability}) = {my_total}")
-        print(f"{grappler.name} (Athletics): {grappler_roll} (1d20) +{grappler_modifier} (STR) = {grappler_total}")
+        # PHB 2024: Escape DC = 8 + grappler's STR mod + grappler's prof bonus
+        grappler_str_mod = get_ability_modifier(grappler.stats['str'])
+        grappler_prof = grappler.get_proficiency_bonus()
+        escape_dc = 8 + grappler_str_mod + grappler_prof
 
-        if my_total > grappler_total:
+        print(f"{self.name} ({chosen_skill}): {escape_roll} (1d20) +{my_modifier} ({ability}{prof_text}) = {my_total}")
+        print(f"Escape DC: 8 +{grappler_str_mod} (STR) +{grappler_prof} (Prof) = {escape_dc}")
+
+        if my_total >= escape_dc:
             print(f"** {self.name} breaks free from the grapple! **")
             self.is_grappled = False
             grappler.is_grappling = False

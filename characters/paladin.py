@@ -1,4 +1,4 @@
-# At the top of characters/paladin.py, fix the imports:
+# File: characters/paladin.py
 from core import roll_d20, roll, get_ability_modifier
 from .base_character import Character
 from spells.level_1.searing_smite import searing_smite
@@ -7,10 +7,11 @@ from spells.level_1.guiding_bolt import guiding_bolt
 from effects import SearingSmiteEffect
 from actions import CastSpellAction, LayOnHandsAction
 from ai.character_ai.paladin_ai import PaladinAIBrain
+from systems.paladin.channel_divinity import PaladinChannelDivinityMixin
 
 
-class Paladin(Character):
-    """A Paladin class with spellcasting and advanced healing abilities."""
+class Paladin(Character, PaladinChannelDivinityMixin):
+    """A Paladin class with spellcasting, advanced healing abilities, and Channel Divinity."""
 
     def __init__(self, name, level, hp, stats, weapon, armor=None, shield=None, oath=None, position=0, xp=0):
         save_proficiencies = ['Wisdom', 'Charisma']
@@ -24,7 +25,12 @@ class Paladin(Character):
                          weapon_proficiencies=weapon_proficiencies,
                          position=position, xp=xp)
 
-        self.spell_slots = {1: self.get_spell_slots_for_level(1)}
+        # Initialize Channel Divinity (level 3+ feature)
+        if self.level >= 3:
+            self.init_channel_divinity()
+
+        # PHB 2024 spell slot progression
+        self.spell_slots = self.get_spell_slots_by_level()
         self.prepared_spells = []
         self.active_smites = []
         self.oath = oath
@@ -44,19 +50,111 @@ class Paladin(Character):
 
         self.available_bonus_actions.append(CastSpellAction(searing_smite))
 
-    def prepare_spells(self, spells_to_prepare):
-        """Prepare spells and add them to available actions"""
-        self.prepared_spells = list(set(spells_to_prepare + self.oath_spells))
-        print(f"{self.name} has prepared the following spells: {[s.name for s in self.prepared_spells]}")
+        # Initialize oath-specific features (level 3+)
+        if self.level >= 3:
+            self.initialize_oath_features()
 
-        # Add prepared spells to available actions
+    def get_spell_slots_by_level(self):
+        """Get spell slots based on PHB 2024 Paladin table."""
+        # Level 1 has 2 first-level slots, starts spellcasting immediately
+        spell_slot_table = {
+            1: {1: 2},
+            2: {1: 2},
+            3: {1: 3},
+            4: {1: 3},
+            5: {1: 4, 2: 2},
+            6: {1: 4, 2: 2},
+            7: {1: 4, 2: 3},
+            8: {1: 4, 2: 3},
+            9: {1: 4, 2: 3, 3: 2},
+            10: {1: 4, 2: 3, 3: 2},
+            11: {1: 4, 2: 3, 3: 3},
+            12: {1: 4, 2: 3, 3: 3},
+            13: {1: 4, 2: 3, 3: 3, 4: 1},
+            14: {1: 4, 2: 3, 3: 3, 4: 1},
+            15: {1: 4, 2: 3, 3: 3, 4: 2},
+            16: {1: 4, 2: 3, 3: 3, 4: 2},
+            17: {1: 4, 2: 3, 3: 3, 4: 3, 5: 1},
+            18: {1: 4, 2: 3, 3: 3, 4: 3, 5: 1},
+            19: {1: 4, 2: 3, 3: 3, 4: 3, 5: 2},
+            20: {1: 4, 2: 3, 3: 3, 4: 3, 5: 2}
+        }
+
+        return spell_slot_table.get(self.level, {})
+
+    def get_spell_slots_for_level(self, spell_level):
+        """Legacy method for backwards compatibility."""
+        return self.spell_slots.get(spell_level, 0)
+
+    def prepare_spells(self, spells_to_prepare):
+        """Prepare spells and add them to available actions - PHB 2024 version"""
+
+        # Import divine_smite
+        from spells.level_1.divine_smite import divine_smite
+
+        # PHB 2024: Divine Smite is always prepared (like a class feature)
+        always_prepared = [divine_smite]
+
+        # Add oath spells (these are also always prepared)
+        if self.oath_spells:
+            always_prepared.extend(self.oath_spells)
+
+        # Combine always prepared + chosen spells
+        self.prepared_spells = list(set(always_prepared + spells_to_prepare))
+
+        print(f"{self.name} has prepared the following spells:")
+        print(f"  Always Prepared: {[s.name for s in always_prepared]}")
+        print(f"  Chosen Spells: {[s.name for s in spells_to_prepare]}")
+        print(f"  Total: {[s.name for s in self.prepared_spells]}")
+
+        # Add prepared spells to available actions (only action spells, not smites)
         if cure_wounds in self.prepared_spells:
             # Remove any existing Cure Wounds action first
             self.available_actions = [a for a in self.available_actions if a.name != "Cast Cure Wounds"]
             self.available_actions.append(CastSpellAction(cure_wounds))
 
+    def initialize_oath_features(self):
+        """Initialize oath-specific features (call this in __init__ after oath setup)."""
+        if self.oath and self.level >= 3:
+            # Add oath-specific Channel Divinity options
+            oath_cd_options = self.oath.get_channel_divinity_options(self.level)
+            for option in oath_cd_options:
+                self.add_channel_divinity_option(option)
+
+            # Apply oath-specific auras and features
+            if hasattr(self.oath, 'apply_aura_of_alacrity'):
+                self.oath.apply_aura_of_alacrity(self, [])  # Empty allies list for now
+
+    def use_inspiring_smite(self, targets=None):
+        """Use Inspiring Smite after casting Divine Smite."""
+        if not targets:
+            targets = [self]  # Default to self
+        return self.use_channel_divinity("Inspiring Smite", targets)
+
+    def use_peerless_athlete(self):
+        """Use Peerless Athlete for enhanced athleticism."""
+        return self.use_channel_divinity("Peerless Athlete")
+
+    def cast_divine_smite_with_inspiring_option(self, target, spell_level=1, is_crit=False, allies_nearby=None):
+        """Cast Divine Smite with option to follow up with Inspiring Smite."""
+        from spells.level_1.divine_smite import divine_smite
+
+        # Cast Divine Smite normally
+        success = divine_smite.cast(self, target, spell_level, is_crit)
+
+        if success and self.channel_divinity_uses > 0:
+            # Check if we have Inspiring Smite available
+            has_inspiring_smite = any(option.name == "Inspiring Smite" for option in self.channel_divinity_options)
+
+            if has_inspiring_smite:
+                print(f"** {self.name} can use Inspiring Smite (Channel Divinity) to distribute temp HP! **")
+                if allies_nearby:
+                    return self.use_inspiring_smite(allies_nearby)
+
+        return success
+
     def use_lay_on_hands(self, amount, target):
-        """Enhanced Lay on Hands with smarter healing amounts."""
+        """PHB 2024 Lay on Hands - enhanced healing and condition removal."""
         if self.lay_on_hands_pool <= 0:
             print(f"{self.name} tries to use Lay on Hands, but the pool is empty!")
             return
@@ -70,11 +168,74 @@ class Paladin(Character):
             print(f"BONUS ACTION: {self.name} uses Lay on Hands, but {target.name} is already at full health.")
             return
 
+        # Perform the healing
         self.lay_on_hands_pool -= heal_amount
         target.hp += heal_amount
 
         print(f"BONUS ACTION: {self.name} uses Lay on Hands on {target.name}, healing for {heal_amount} HP.")
         print(f"{target.name}'s HP is now {target.hp}/{target.max_hp}. ({self.lay_on_hands_pool} HP remaining in pool)")
+
+        # PHB 2024: Can also remove Poisoned condition
+        if hasattr(target, 'is_poisoned') and target.is_poisoned:
+            if self.lay_on_hands_pool >= 5:
+                print(
+                    f"** {self.name} also removes the Poisoned condition from {target.name} (costs 5 HP from pool) **")
+                self.lay_on_hands_pool -= 5
+                target.is_poisoned = False
+                print(f"({self.lay_on_hands_pool} HP remaining in pool)")
+
+    def use_restoring_touch(self, target, conditions_to_remove):
+        """Level 14 feature - enhanced Lay on Hands that removes conditions."""
+        if self.level < 14:
+            print(f"{self.name} doesn't have Restoring Touch yet (requires level 14)")
+            return False
+
+        if self.lay_on_hands_pool <= 0:
+            print(f"{self.name} tries to use Restoring Touch, but the Lay on Hands pool is empty!")
+            return False
+
+        # PHB 2024 Restoring Touch conditions
+        removable_conditions = ['Blinded', 'Charmed', 'Deafened', 'Frightened', 'Paralyzed', 'Stunned']
+        total_cost = 0
+        removed_conditions = []
+
+        for condition in conditions_to_remove:
+            if condition in removable_conditions:
+                if hasattr(target, f'is_{condition.lower()}') and getattr(target, f'is_{condition.lower()}'):
+                    if self.lay_on_hands_pool >= (total_cost + 5):
+                        total_cost += 5
+                        removed_conditions.append(condition)
+                        setattr(target, f'is_{condition.lower()}', False)
+                    else:
+                        print(
+                            f"Not enough Lay on Hands points to remove {condition} (need 5, have {self.lay_on_hands_pool - total_cost})")
+
+        if removed_conditions:
+            self.lay_on_hands_pool -= total_cost
+            print(f"** {self.name} uses Restoring Touch to remove conditions: {', '.join(removed_conditions)} **")
+            print(f"** Cost: {total_cost} HP from Lay on Hands pool ({self.lay_on_hands_pool} remaining) **")
+            return True
+        else:
+            print(f"No valid conditions to remove on {target.name}")
+            return False
+
+    def long_rest_recovery(self):
+        """Override to handle both spell slots and Lay on Hands recovery."""
+        # Recover spell slots
+        self.spell_slots = self.get_spell_slots_by_level()
+
+        # Recover Lay on Hands pool
+        self.lay_on_hands_pool = self.level * 5
+
+        # Recover Channel Divinity
+        if hasattr(self, 'long_rest_recovery'):
+            super().long_rest_recovery()  # Call PaladinChannelDivinityMixin method
+
+        print(f"** {self.name} completes a long rest and recovers all resources! **")
+        print(f"   Spell slots: {self.spell_slots}")
+        print(f"   Lay on Hands: {self.lay_on_hands_pool} HP")
+        if hasattr(self, 'channel_divinity_uses'):
+            print(f"   Channel Divinity: {self.channel_divinity_uses} uses")
 
     def get_optimal_lay_on_hands_amount(self, target):
         """Calculate optimal Lay on Hands healing amount"""
@@ -89,18 +250,11 @@ class Paladin(Character):
         else:
             return min(self.lay_on_hands_pool, hp_needed)  # Use remaining pool
 
-    def get_spell_slots_for_level(self, spell_level):
-        if self.level < 2: return 0
-        if spell_level == 1:
-            if self.level < 3: return 2
-            if self.level < 5: return 3
-            return 4
-        return 0
-
     def get_spellcasting_modifier(self):
         return get_ability_modifier(self.stats['cha'])
 
     def get_spell_save_dc(self):
+        """Override to ensure consistent spell save DC calculation."""
         return 8 + self.get_proficiency_bonus() + self.get_spellcasting_modifier()
 
     def cast_spell(self, spell, target=None, action_type="ACTION"):
@@ -109,7 +263,7 @@ class Paladin(Character):
         return spell.cast(self, target)
 
     def attack(self, target, action_type="ACTION", weapon=None, extra_damage_dice=None):
-        """Paladin's attack with IMPROVED critical hit damage display."""
+        """Paladin's attack with PHB 2024 Divine Smite as a spell."""
         if not self.is_alive or not target or not target.is_alive: return
 
         weapon_to_use = weapon or self.equipped_weapon
@@ -147,7 +301,7 @@ class Paladin(Character):
             else:
                 print("The attack hits!")
 
-            # IMPROVED DAMAGE CALCULATION WITH CLEAR CRIT DISPLAY
+            # Calculate weapon damage with clear crit display
             damage_breakdown_parts = []
             total_damage = 0
 
@@ -156,11 +310,9 @@ class Paladin(Character):
             if is_crit:
                 weapon_crit_damage = roll(weapon_to_use.damage_dice)
                 weapon_damage += weapon_crit_damage
-                # Show both normal and crit dice clearly
                 num_dice, die_type = weapon_to_use.damage_dice.split('d')
-                normal_dice = f"{num_dice}d{die_type}"
                 doubled_dice = f"{int(num_dice) * 2}d{die_type}"
-                damage_breakdown_parts.append(f"{weapon_damage} [{doubled_dice} CRIT from {normal_dice}]")
+                damage_breakdown_parts.append(f"{weapon_damage} [{doubled_dice} CRIT from {weapon_to_use.damage_dice}]")
             else:
                 damage_breakdown_parts.append(f"{weapon_damage} [{weapon_to_use.damage_dice}]")
 
@@ -196,20 +348,43 @@ class Paladin(Character):
                 if self.concentrating_on == searing_smite:
                     self.concentrating_on = None
 
-            # Divine Smite damage
-            if self.spell_slots.get(1, 0) > 0:
-                self.spell_slots[1] -= 1
-                divine_damage = roll('2d8')
-                if is_crit:
-                    divine_crit_damage = roll('2d8')
-                    divine_damage += divine_crit_damage
-                    damage_breakdown_parts.append(f"{divine_damage} [4d8 CRIT Divine Smite from 2d8]")
-                else:
-                    damage_breakdown_parts.append(f"{divine_damage} [2d8 Divine Smite]")
+            # PHB 2024: Divine Smite as a spell (check if we have it prepared and slots available)
+            from spells.level_1.divine_smite import divine_smite
+            if (divine_smite in self.prepared_spells and
+                    any(self.spell_slots.get(level, 0) > 0 for level in range(1, 6))):
 
-                total_damage += divine_damage
-                print(
-                    f"** {self.name} uses a level 1 spell slot for DIVINE SMITE! ({self.spell_slots[1]} remaining) **")
+                # Find highest available spell slot (Paladins often want to maximize smite damage)
+                smite_level = None
+                for level in range(5, 0, -1):  # Check from 5th down to 1st
+                    if self.spell_slots.get(level, 0) > 0:
+                        smite_level = level
+                        break
+
+                if smite_level:
+                    self.spell_slots[smite_level] -= 1
+                    print(
+                        f"** {self.name} casts Divine Smite using a level {smite_level} spell slot! ({self.spell_slots[smite_level]} remaining) **")
+
+                    # PHB 2024: Base damage 2d8, +1d8 per higher level
+                    base_dice = 2
+                    bonus_dice = smite_level - 1
+                    total_smite_dice = base_dice + bonus_dice
+
+                    smite_damage = 0
+                    for _ in range(total_smite_dice):
+                        smite_damage += roll('1d8')
+
+                    if is_crit:
+                        smite_crit_damage = 0
+                        for _ in range(total_smite_dice):
+                            smite_crit_damage += roll('1d8')
+                        smite_damage += smite_crit_damage
+                        damage_breakdown_parts.append(
+                            f"{smite_damage} [{total_smite_dice * 2}d8 CRIT Divine Smite from {total_smite_dice}d8]")
+                    else:
+                        damage_breakdown_parts.append(f"{smite_damage} [{total_smite_dice}d8 Divine Smite]")
+
+                    total_damage += smite_damage
 
             # Ability modifier (not doubled on crit)
             ability_modifier = self.get_damage_modifier()
@@ -222,3 +397,20 @@ class Paladin(Character):
             target.take_damage(total_damage, attacker=self)
         else:
             print("The attack misses.")
+
+    def __str__(self):
+        """Enhanced string representation with oath and Channel Divinity info."""
+        # Get base character info
+        base_info = super().__str__()
+
+        # Add oath info
+        if self.oath:
+            oath_info = f"\nOath: {self.oath.name}"
+            base_info += oath_info
+
+        # Add Channel Divinity info if available
+        if hasattr(self, 'channel_divinity_uses'):
+            cd_info = f"\nChannel Divinity: {self.channel_divinity_uses}/{self.get_channel_divinity_uses()} uses"
+            base_info += cd_info
+
+        return base_info

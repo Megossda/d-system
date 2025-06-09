@@ -3,7 +3,7 @@ from ..base_enemy import Enemy
 from equipment.weapons.base_weapon import Weapon
 from equipment.armor.heavy import chain_mail
 from equipment.armor.shields import shield
-from ai.enemy_ai.humanoid_ai import HobgoblinWarriorAI
+from ai.enemy_ai.humanoid.hobgoblin_warrior_ai import HobgoblinWarriorAI
 
 
 class HobgoblinWarrior(Enemy):

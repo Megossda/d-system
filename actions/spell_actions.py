@@ -21,3 +21,30 @@ class CastSpellAction(Action):
         else:
             print(
                 f"{action_type}: {performer.name} tries to cast {self.spell.name} but is out of level {self.spell.level} slots!")
+
+
+# File: actions/special_actions.py (ADD new escape action)
+class EscapeGrappleAction(Action):
+    """Action to escape from a grapple using Athletics or Acrobatics."""
+
+    def __init__(self):
+        super().__init__("Escape Grapple")
+
+    def execute(self, performer, target=None, action_type="ACTION"):
+        if not hasattr(performer, 'is_grappled') or not performer.is_grappled:
+            print(f"{action_type}: {performer.name} is not grappled!")
+            return
+
+        # Find the grappler
+        grappler = None
+        for other in performer.current_combatants:  # We'll need to pass this
+            if (hasattr(other, 'is_grappling') and other.is_grappling and
+                    hasattr(other, 'grapple_target') and other.grapple_target == performer):
+                grappler = other
+                break
+
+        if not grappler:
+            print(f"{action_type}: {performer.name} cannot find their grappler!")
+            return
+
+        performer.attempt_grapple_escape(grappler, action_type)
