@@ -267,22 +267,35 @@ class Character:
             print("The attack misses.")
 
     def make_spell_attack(self, target, spell, action_type="ACTION"):
-        if not self.is_alive: return False
+        if not self.is_alive:
+            return False, False  # (hit, is_crit)
 
-        attack_roll, _ = roll_d20()
+        attack_roll, _ = roll_d20(advantage=self.has_advantage, disadvantage=self.has_disadvantage)
+
+        # Reset advantage/disadvantage flags
+        advantage_text = ""
+        if self.has_advantage and not self.has_disadvantage:
+            advantage_text = " (with advantage)"
+        elif self.has_disadvantage and not self.has_advantage:
+            advantage_text = " (with disadvantage)"
+        self.has_advantage = False
+        self.has_disadvantage = False
+
         spell_attack_modifier = self.get_spellcasting_modifier()
         prof_bonus = self.get_proficiency_bonus()
         total_attack = attack_roll + spell_attack_modifier + prof_bonus
 
         ability_acronym = self.spellcasting_ability_name.upper()
         print(
-            f"SPELL ATTACK ROLL: {attack_roll} (1d20) +{spell_attack_modifier} ({ability_acronym}) +{prof_bonus} (Prof) = {total_attack}")
+            f"SPELL ATTACK ROLL: {attack_roll} (1d20{advantage_text}) +{spell_attack_modifier} ({ability_acronym}) +{prof_bonus} (Prof) = {total_attack}")
 
-        if total_attack >= target.ac or attack_roll == 20:
-            return True
-        else:
+        is_crit = (attack_roll == 20)
+        is_hit = (total_attack >= target.ac or is_crit)
+
+        if not is_hit:
             print("The spell misses.")
-            return False
+
+        return is_hit, is_crit  # Return both hit status and crit status
 
     def gain_xp(self, amount):
         if not self.is_alive: return
@@ -356,3 +369,42 @@ class Character:
 
     def get_damage_modifier(self):
         return get_ability_modifier(self.stats['str'])
+
+    def break_grapple_attempt(self, grappler):
+        """Attempt to break free from a grapple using Athletics or Acrobatics"""
+        print(f"--- {self.name} attempts to break free from {grappler.name}'s grapple! ---")
+
+        # Player can choose Athletics (STR) or Acrobatics (DEX)
+        # For AI, choose the better modifier
+        athletics_mod = get_ability_modifier(self.stats['str'])
+        acrobatics_mod = get_ability_modifier(self.stats['dex'])
+
+        if athletics_mod >= acrobatics_mod:
+            chosen_skill = "Athletics"
+            my_modifier = athletics_mod
+            ability = "STR"
+        else:
+            chosen_skill = "Acrobatics"
+            my_modifier = acrobatics_mod
+            ability = "DEX"
+
+        # Contested check
+        my_roll, _ = roll_d20(disadvantage=True)  # Grappled creatures have disadvantage
+        my_total = my_roll + my_modifier
+
+        grappler_roll, _ = roll_d20()
+        grappler_modifier = get_ability_modifier(grappler.stats['str'])
+        grappler_total = grappler_roll + grappler_modifier
+
+        print(f"{self.name} ({chosen_skill}): {my_roll} (1d20, disadvantage) +{my_modifier} ({ability}) = {my_total}")
+        print(f"{grappler.name} (Athletics): {grappler_roll} (1d20) +{grappler_modifier} (STR) = {grappler_total}")
+
+        if my_total > grappler_total:
+            print(f"** {self.name} breaks free from the grapple! **")
+            self.is_grappled = False
+            grappler.is_grappling = False
+            grappler.grapple_target = None
+            return True
+        else:
+            print(f"** {self.name} fails to break free and remains grappled! **")
+            return False

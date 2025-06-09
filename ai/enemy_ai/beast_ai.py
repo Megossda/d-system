@@ -11,11 +11,12 @@ class GiantConstrictorSnakeAI(AIBrain):
         target = next((c for c in combatants if c.is_alive and c != character), None)
 
         if target:
-            # If already grappling, keep attacking the grappled target
+            # If already grappling, keep using multiattack on the grappled target
             if hasattr(character, 'is_grappling') and character.is_grappling and hasattr(character, 'grapple_target') and character.grapple_target and character.grapple_target.is_alive:
                 target = character.grapple_target
+                print(f"[SNAKE AI] {character.name} continues grappling {target.name}")
 
-            # Always use multiattack if available
+            # Always prioritize multiattack for the snake
             action = MultiattackAction(character)
         else:
             action = AttackAction(character.equipped_weapon)
