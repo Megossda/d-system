@@ -109,7 +109,7 @@ class Paladin(Character):
         return spell.cast(self, target)
 
     def attack(self, target, action_type="ACTION", weapon=None, extra_damage_dice=None):
-        """Paladin's attack, with detailed logging and FIXED critical hits."""
+        """Paladin's attack with IMPROVED critical hit damage display."""
         if not self.is_alive or not target or not target.is_alive: return
 
         weapon_to_use = weapon or self.equipped_weapon
@@ -147,13 +147,26 @@ class Paladin(Character):
             else:
                 print("The attack hits!")
 
-            damage_parts = {}
+            # IMPROVED DAMAGE CALCULATION WITH CLEAR CRIT DISPLAY
+            damage_breakdown_parts = []
+            total_damage = 0
 
-            # FIXED: Proper critical hit damage calculation
+            # Weapon damage
             weapon_damage = roll(weapon_to_use.damage_dice)
-            crit_label = weapon_to_use.damage_dice
+            if is_crit:
+                weapon_crit_damage = roll(weapon_to_use.damage_dice)
+                weapon_damage += weapon_crit_damage
+                # Show both normal and crit dice clearly
+                num_dice, die_type = weapon_to_use.damage_dice.split('d')
+                normal_dice = f"{num_dice}d{die_type}"
+                doubled_dice = f"{int(num_dice) * 2}d{die_type}"
+                damage_breakdown_parts.append(f"{weapon_damage} [{doubled_dice} CRIT from {normal_dice}]")
+            else:
+                damage_breakdown_parts.append(f"{weapon_damage} [{weapon_to_use.damage_dice}]")
 
-            # Check for magic weapon bonus
+            total_damage += weapon_damage
+
+            # Magic weapon bonus (not doubled on crit)
             magic_bonus = 0
             if '+1' in weapon_to_use.name:
                 magic_bonus = 1
@@ -162,72 +175,49 @@ class Paladin(Character):
             elif '+3' in weapon_to_use.name:
                 magic_bonus = 3
 
-            if is_crit:
-                weapon_damage += roll(weapon_to_use.damage_dice)
-                # Update label to show doubled dice
-                num_dice, die_type = weapon_to_use.damage_dice.split('d')
-                doubled_dice = str(int(num_dice) * 2) + 'd' + die_type
-                crit_label = doubled_dice
-
             if magic_bonus > 0:
-                damage_parts[f'{weapon_damage} [{crit_label}] +{magic_bonus} [magic]'] = weapon_damage + magic_bonus
-            else:
-                damage_parts[f'{weapon_to_use.name} ({crit_label})'] = weapon_damage
+                total_damage += magic_bonus
+                damage_breakdown_parts.append(f"{magic_bonus} [Magic Bonus]")
 
-            if extra_damage_dice:
-                extra_damage = roll(extra_damage_dice)
-                extra_label = extra_damage_dice
-                if is_crit:
-                    extra_damage += roll(extra_damage_dice)
-                    # Update label for crit
-                    num_dice, die_type = extra_damage_dice.split('d')
-                    doubled_dice = str(int(num_dice) * 2) + 'd' + die_type
-                    extra_label = doubled_dice
-                damage_parts[f'Bonus ({extra_label})'] = extra_damage
-
+            # Searing Smite damage
             if searing_smite in self.active_smites:
-                searing_dice = '1d6'
-                searing_damage = roll(searing_dice)
-                searing_label = searing_dice
+                searing_damage = roll('1d6')
                 if is_crit:
-                    searing_damage += roll(searing_dice)
-                    searing_label = '2d6'
-                damage_parts[f'Searing Smite ({searing_label})'] = searing_damage
+                    searing_crit_damage = roll('1d6')
+                    searing_damage += searing_crit_damage
+                    damage_breakdown_parts.append(f"{searing_damage} [2d6 CRIT Searing Smite from 1d6]")
+                else:
+                    damage_breakdown_parts.append(f"{searing_damage} [1d6 Searing Smite]")
+
+                total_damage += searing_damage
                 print(f"** The attack is imbued with Searing Smite! **")
                 target.active_effects.append(SearingSmiteEffect(self))
                 self.active_smites.remove(searing_smite)
                 if self.concentrating_on == searing_smite:
                     self.concentrating_on = None
 
+            # Divine Smite damage
             if self.spell_slots.get(1, 0) > 0:
                 self.spell_slots[1] -= 1
-                divine_dice = '2d8'
-                divine_damage = roll(divine_dice)
-                divine_label = divine_dice
+                divine_damage = roll('2d8')
                 if is_crit:
-                    divine_damage += roll(divine_dice)
-                    divine_label = '4d8'
-                damage_parts[f'Divine Smite ({divine_label})'] = divine_damage
+                    divine_crit_damage = roll('2d8')
+                    divine_damage += divine_crit_damage
+                    damage_breakdown_parts.append(f"{divine_damage} [4d8 CRIT Divine Smite from 2d8]")
+                else:
+                    damage_breakdown_parts.append(f"{divine_damage} [2d8 Divine Smite]")
+
+                total_damage += divine_damage
                 print(
                     f"** {self.name} uses a level 1 spell slot for DIVINE SMITE! ({self.spell_slots[1]} remaining) **")
 
-            total_damage = sum(damage_parts.values()) + self.get_damage_modifier()
+            # Ability modifier (not doubled on crit)
+            ability_modifier = self.get_damage_modifier()
+            total_damage += ability_modifier
+            damage_breakdown_parts.append(f"{ability_modifier} [STR]")
 
-            # Build damage log - exclude magic bonus from ability modifier addition
-            damage_log_parts = []
-            total_without_ability = 0
-            for desc, dmg in damage_parts.items():
-                if '[magic]' in desc:
-                    # This already includes the magic bonus
-                    damage_log_parts.append(desc)
-                    total_without_ability += dmg
-                else:
-                    damage_log_parts.append(f"{dmg} [{desc}]")
-                    total_without_ability += dmg
-
-            damage_log = " + ".join(damage_log_parts)
-            damage_log += f" +{self.get_damage_modifier()} [STR]"
-
+            # Build final damage log
+            damage_log = " + ".join(damage_breakdown_parts)
             print(f"{self.name} deals a total of {total_damage} damage. ({damage_log})")
             target.take_damage(total_damage, attacker=self)
         else:
