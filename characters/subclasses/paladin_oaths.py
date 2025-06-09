@@ -1,4 +1,5 @@
-from spells.level_1.level_1 import guiding_bolt, heroism  # FIXED
+from spells.level_1.guiding_bolt import guiding_bolt
+from spells.level_1.heroism import heroism
 class Oath:
     """A base class for all Paladin Oaths."""
     def __init__(self, name):

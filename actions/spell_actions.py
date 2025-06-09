@@ -23,3 +23,4 @@ class MultiattackAction(Action):
         else:
             # Fallback to regular attack
             performer.attack(target, action_type)
+
