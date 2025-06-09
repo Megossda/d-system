@@ -1,6 +1,6 @@
 from core import roll_d20, roll, get_ability_modifier, XP_FOR_NEXT_LEVEL, XP_FROM_CR
 from actions import AttackAction, DodgeAction, OpportunityAttack, CastSpellAction
-from ai.base_ai import AIBrain  # FIXED
+from ai.base_ai import AIBrain
 import math
 
 
@@ -54,6 +54,7 @@ class Character:
         self.grants_advantage_to_next_attacker = False
         self.spellcasting_ability_name = "None"
         self.active_smites = []
+        self.is_grappled = False
 
     def calculate_ac(self):
         ac = 10 + get_ability_modifier(self.stats['dex'])

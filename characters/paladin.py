@@ -1,9 +1,12 @@
+# At the top of characters/paladin.py, fix the imports:
 from core import roll_d20, roll, get_ability_modifier
-from .base_character import Character  # FIXED
-from spells.level_1.level_1 import searing_smite, cure_wounds, guiding_bolt
+from .base_character import Character
+from spells.level_1.searing_smite import searing_smite
+from spells.level_1.cure_wounds import cure_wounds
+from spells.level_1.guiding_bolt import guiding_bolt
 from effects import SearingSmiteEffect
 from actions import CastSpellAction, LayOnHandsAction
-from ai.character_ai.paladin_ai import PaladinAIBrain  # FIXED
+from ai.character_ai.paladin_ai import PaladinAIBrain
 
 
 class Paladin(Character):
