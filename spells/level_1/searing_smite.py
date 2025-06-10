@@ -9,14 +9,14 @@ class SearingSmite(Spell):
             name="Searing Smite",
             level=1,
             school="Evocation",
-            casting_time="1 Bonus Action (after hitting with melee attack)",
+            casting_time="1 Bonus Action (immediately after hitting with melee weapon or unarmed strike)",
             requires_concentration=False,  # PHB 2024: No longer requires concentration!
             damage_type="Fire",
             attack_save="CON Save"
         )
 
     def cast(self, caster, target, spell_level=1):
-        """PHB 2024: Immediate fire damage + ongoing damage until CON save succeeds."""
+        """PHB 2024: Cast immediately after hitting with melee attack - adds immediate and ongoing damage."""
         if not target:
             return False
 
@@ -29,15 +29,17 @@ class SearingSmite(Spell):
         # Calculate damage per spell level
         dice_count = spell_level  # 1d6 at 1st, 2d6 at 2nd, etc.
         
-        # Immediate damage when cast
+        # PHB 2024: "As you hit the target, it takes an extra 1d6 Fire damage from the attack"
         immediate_damage = 0
         for _ in range(dice_count):
             immediate_damage += roll('1d6')
         
-        print(f"** SEARING SMITE: {immediate_damage} fire damage ({dice_count}d6) **")
+        print(f"** SEARING SMITE: {immediate_damage} extra fire damage ({dice_count}d6) added to the attack! **")
+        
+        # Apply immediate damage (this is added to the weapon attack damage)
         target.take_damage(immediate_damage, attacker=caster)
         
-        # Set up ongoing fire damage effect
+        # Set up ongoing fire damage effect for subsequent turns
         target.searing_smite_effect = {
             'active': True,
             'dice_count': dice_count,

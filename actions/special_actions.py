@@ -1,4 +1,5 @@
 from .base_actions import Action
+from core import get_ability_modifier, roll_d20  # FIXED: Added missing imports
 
 
 class LayOnHandsAction(Action):
@@ -98,7 +99,6 @@ class EscapeGrappleAction(Action):
             prof_text = f" +{performer.get_proficiency_bonus()} (Prof)" if acrobatics_has_prof else ""
 
         # Make the escape attempt
-        from core import roll_d20
         escape_roll, _ = roll_d20()
         my_total = escape_roll + my_modifier
 

@@ -322,28 +322,54 @@ class Paladin(Character, PaladinChannelDivinityMixin):
         return spell.cast(self, target)
 
     def attack(self, target, action_type="ACTION", weapon=None, extra_damage_dice=None, allow_divine_smite=None):
-        """Paladin's attack with PHB 2024 Divine Smite as a spell."""
+        """Paladin's attack with PHB 2024 Divine Smite and Searing Smite mechanics."""
         if not self.is_alive or not target or not target.is_alive: return
 
         weapon_to_use = weapon or self.equipped_weapon
 
-        if abs(self.position - target.position) > 5:
+        # Check if this is a melee weapon for smite eligibility
+        is_melee_weapon = not (hasattr(weapon_to_use, 'properties') and 'Ranged' in weapon_to_use.properties)
+
+        if abs(self.position - target.position) > getattr(weapon_to_use, 'reach', 5):
             print(
                 f"{action_type}: {self.name} tries to attack {target.name} with {weapon_to_use.name}, but is out of range.")
             return
 
         print(f"{action_type}: {self.name} attacks {target.name} (AC: {target.ac}) with {weapon_to_use.name}!")
 
-        if target.grants_advantage_to_next_attacker:
-            self.has_advantage = True
-            target.grants_advantage_to_next_attacker = False
+        # Handle advantage/disadvantage
+        grapple_disadvantage = False
+        if hasattr(self, 'is_grappled') and self.is_grappled:
+            if hasattr(self, 'grappler') and self.grappler and target != self.grappler:
+                grapple_disadvantage = True
+                print(f"** {self.name} has disadvantage (Grappled condition - attacking someone other than grappler) **")
 
+        if target.grants_advantage_to_next_attacker:
+            current_round = getattr(self, 'current_round', 1)
+            advantage_expires = getattr(target, 'advantage_expires_round', current_round)
+
+            if current_round <= advantage_expires:
+                self.has_advantage = True
+                target.grants_advantage_to_next_attacker = False
+                print(f"** {self.name} gains advantage from Guiding Bolt's effect! **")
+            else:
+                target.grants_advantage_to_next_attacker = False
+                print(f"** Guiding Bolt's advantage effect has expired. **")
+
+        if grapple_disadvantage:
+            self.has_disadvantage = True
+
+        # Make attack roll
+        from core import roll_d20
         attack_roll, _ = roll_d20(advantage=self.has_advantage, disadvantage=self.has_disadvantage)
         advantage_text = ""
         if self.has_advantage and not self.has_disadvantage:
             advantage_text = " (with advantage)"
         elif self.has_disadvantage and not self.has_advantage:
             advantage_text = " (with disadvantage)"
+        elif self.has_advantage and self.has_disadvantage:
+            advantage_text = " (advantage cancelled by disadvantage)"
+        
         self.has_advantage = False
         self.has_disadvantage = False
 
@@ -353,6 +379,7 @@ class Paladin(Character, PaladinChannelDivinityMixin):
         print(
             f"ATTACK ROLL: {attack_roll} (1d20{advantage_text}) +{attack_modifier} (STR) +{prof_bonus} (Prof) = {total_attack}")
 
+        # Check if attack hits
         if total_attack >= target.ac or attack_roll == 20:
             is_crit = (attack_roll == 20)
             if is_crit:
@@ -360,11 +387,11 @@ class Paladin(Character, PaladinChannelDivinityMixin):
             else:
                 print("The attack hits!")
 
-            # Calculate weapon damage with clear crit display
+            # Calculate base weapon damage
             damage_breakdown_parts = []
             total_damage = 0
 
-            # Weapon damage
+            from core import roll
             weapon_damage = roll(weapon_to_use.damage_dice)
             if is_crit:
                 weapon_crit_damage = roll(weapon_to_use.damage_dice)
@@ -390,42 +417,60 @@ class Paladin(Character, PaladinChannelDivinityMixin):
                 total_damage += magic_bonus
                 damage_breakdown_parts.append(f"{magic_bonus} [Magic Bonus]")
 
-            # Searing Smite damage
-            if searing_smite in self.active_smites:
-                searing_damage = roll('1d6')
-                if is_crit:
-                    searing_crit_damage = roll('1d6')
-                    searing_damage += searing_crit_damage
-                    damage_breakdown_parts.append(f"{searing_damage} [2d6 CRIT Searing Smite from 1d6]")
-                else:
-                    damage_breakdown_parts.append(f"{searing_damage} [1d6 Searing Smite]")
+            # PHB 2024: Check if we can use Searing Smite AFTER the hit
+            searing_smite_used = False
+            if is_melee_weapon and hasattr(self, '_pending_searing_smite') and self._pending_searing_smite:
+                from spells.level_1.searing_smite import searing_smite
+                if (searing_smite in self.prepared_spells and 
+                    self.spell_slots.get(1, 0) > 0 and
+                    not (hasattr(target, 'searing_smite_effect') and target.searing_smite_effect.get('active', False))):
+                    
+                    # Use Searing Smite immediately after the hit
+                    self.spell_slots[1] -= 1
+                    print(f"** {self.name} casts Searing Smite immediately after the hit! ({self.spell_slots[1]} level 1 slots remaining) **")
+                    
+                    # Apply Searing Smite damage
+                    searing_damage = roll('1d6')
+                    if is_crit:
+                        searing_crit_damage = roll('1d6')
+                        searing_damage += searing_crit_damage
+                        damage_breakdown_parts.append(f"{searing_damage} [2d6 CRIT Searing Smite from 1d6]")
+                    else:
+                        damage_breakdown_parts.append(f"{searing_damage} [1d6 Searing Smite]")
 
-                total_damage += searing_damage
-                print(f"** The attack is imbued with Searing Smite! **")
-                target.active_effects.append(SearingSmiteEffect(self))
-                self.active_smites.remove(searing_smite)
-                if self.concentrating_on == searing_smite:
-                    self.concentrating_on = None
+                    total_damage += searing_damage
+                    searing_smite_used = True
+                    
+                    # Set up ongoing effect
+                    target.searing_smite_effect = {
+                        'active': True,
+                        'dice_count': 1,
+                        'caster': self,
+                        'save_dc': self.get_spell_save_dc()
+                    }
+                    print(f"** {target.name} is wreathed in flames! Takes 1d6 fire damage each turn until CON save succeeds **")
+                
+                # Clear the pending flag
+                self._pending_searing_smite = False
 
-            # FIXED: Divine Smite with conservation check
+            # Divine Smite logic (unchanged)
             from spells.level_1.divine_smite import divine_smite
             should_use_divine_smite = False
             
-            # Check if Divine Smite is available
-            if (divine_smite in self.prepared_spells and
+            if (is_melee_weapon and divine_smite in self.prepared_spells and
                     any(self.spell_slots.get(level, 0) > 0 for level in range(1, 6))):
                 
-                # If allow_divine_smite is explicitly set, use that
                 if allow_divine_smite is not None:
                     should_use_divine_smite = allow_divine_smite
+                elif hasattr(self, '_conserving_slots_for_healing') and self._conserving_slots_for_healing:
+                    should_use_divine_smite = False
+                    print(f"** {self.name} restrains from using Divine Smite (AI conservation decision) **")
                 else:
-                    # Otherwise, check conservation status
                     should_use_divine_smite = self._should_use_divine_smite()
 
             if should_use_divine_smite:
-                # Find highest available spell slot (Paladins often want to maximize smite damage)
                 smite_level = None
-                for level in range(5, 0, -1):  # Check from 5th down to 1st
+                for level in range(5, 0, -1):
                     if self.spell_slots.get(level, 0) > 0:
                         smite_level = level
                         break
@@ -435,7 +480,6 @@ class Paladin(Character, PaladinChannelDivinityMixin):
                     print(
                         f"** {self.name} casts Divine Smite using a level {smite_level} spell slot! ({self.spell_slots[smite_level]} remaining) **")
 
-                    # PHB 2024: Base damage 2d8, +1d8 per higher level
                     base_dice = 2
                     bonus_dice = smite_level - 1
                     total_smite_dice = base_dice + bonus_dice
@@ -455,21 +499,22 @@ class Paladin(Character, PaladinChannelDivinityMixin):
                         damage_breakdown_parts.append(f"{smite_damage} [{total_smite_dice}d8 Divine Smite]")
 
                     total_damage += smite_damage
-            elif divine_smite in self.prepared_spells:
-                # Have Divine Smite but choosing not to use it
-                print(f"** {self.name} restrains from using Divine Smite (conserving spell slots) **")
 
             # Ability modifier (not doubled on crit)
             ability_modifier = self.get_damage_modifier()
             total_damage += ability_modifier
             damage_breakdown_parts.append(f"{ability_modifier} [STR]")
 
-            # Build final damage log
+            # Apply all damage
             damage_log = " + ".join(damage_breakdown_parts)
             print(f"{self.name} deals a total of {total_damage} damage. ({damage_log})")
             target.take_damage(total_damage, attacker=self)
+            
         else:
             print("The attack misses.")
+            # Clear pending Searing Smite if attack misses
+            if hasattr(self, '_pending_searing_smite'):
+                self._pending_searing_smite = False
 
     def _should_use_divine_smite(self):
         """Check if we should use Divine Smite based on current conservation status."""

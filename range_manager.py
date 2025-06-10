@@ -2,6 +2,7 @@
 
 from typing import Dict, List, Tuple, Optional
 import math
+from actions.base_actions import AttackAction  # ADD THIS LINE
 
 
 class WeaponRanges:
@@ -459,6 +460,16 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
             if hasattr(character, '_critical_decision_reason'):
                 delattr(character, '_critical_decision_reason')
             return original_decision
+
+        # Handle case where AI returns None
+        if original_decision is None:
+            from actions.base_actions import AttackAction  # Import here temporarily
+            return {
+                'action': AttackAction(character.equipped_weapon),
+                'bonus_action': None,
+                'action_target': next((c for c in combatants if c.is_alive and c != character), None),
+                'bonus_action_target': None
+            }
 
         # Find target
         target = original_decision.get('action_target')
