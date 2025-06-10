@@ -167,45 +167,45 @@ class GiantConstrictorSnake(Enemy):
             print("The constrict attack misses.")
 
     def process_effects_on_turn_start(self):
-    """Process grappling effects and ongoing spell effects at start of turn"""
-    super().process_effects_on_turn_start()
+        """Process grappling effects and ongoing spell effects at start of turn"""
+        super().process_effects_on_turn_start()
 
-    # Process Searing Smite ongoing damage
-    if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
-        effect = self.searing_smite_effect
-        dice_count = effect['dice_count']
-        save_dc = effect['save_dc']
-        caster = effect['caster']
-        
-        # Deal ongoing fire damage
-        ongoing_damage = 0
-        for _ in range(dice_count):
-            ongoing_damage += roll('1d6')
-        
-        print(f"** {self.name} takes {ongoing_damage} fire damage ({dice_count}d6) from Searing Smite! **")
-        self.take_damage(ongoing_damage, attacker=caster)
-        
-        # Constitution saving throw to end the effect
-        if self.is_alive:
-            print(f"** {self.name} makes a Constitution saving throw to extinguish the flames **")
-            if self.make_saving_throw('con', save_dc):
-                print(f"** {self.name} succeeds and extinguishes the searing flames! **")
-                self.searing_smite_effect['active'] = False
-                del self.searing_smite_effect
-            else:
-                print(f"** {self.name} fails and continues burning! **")
+        # Process Searing Smite ongoing damage
+        if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
+            effect = self.searing_smite_effect
+            dice_count = effect['dice_count']
+            save_dc = effect['save_dc']
+            caster = effect['caster']
+            
+            # Deal ongoing fire damage
+            ongoing_damage = 0
+            for _ in range(dice_count):
+                ongoing_damage += roll('1d6')
+            
+            print(f"** {self.name} takes {ongoing_damage} fire damage ({dice_count}d6) from Searing Smite! **")
+            self.take_damage(ongoing_damage, attacker=caster)
+            
+            # Constitution saving throw to end the effect
+            if self.is_alive:
+                print(f"** {self.name} makes a Constitution saving throw to extinguish the flames **")
+                if self.make_saving_throw('con', save_dc):
+                    print(f"** {self.name} succeeds and extinguishes the searing flames! **")
+                    self.searing_smite_effect['active'] = False
+                    del self.searing_smite_effect
+                else:
+                    print(f"** {self.name} fails and continues burning! **")
 
-    # Apply automatic crush damage to grappled target
-    if self.is_grappling and self.grapple_target and self.grapple_target.is_alive:
-        print(f"** AUTOMATIC CRUSH: {self.name} crushes {self.grapple_target.name}! **")
-        crush_damage = roll('2d8') + get_ability_modifier(self.stats['str'])
-        print(f"** {self.grapple_target.name} takes {crush_damage} bludgeoning damage from being crushed! **")
-        self.grapple_target.take_damage(crush_damage, attacker=self)
-    elif self.is_grappling and (not self.grapple_target or not self.grapple_target.is_alive):
-        # Target is dead or missing, release grapple
-        print(f"** {self.name} releases its grapple **")
-        self.is_grappling = False
-        self.grapple_target = None
+        # Apply automatic crush damage to grappled target
+        if self.is_grappling and self.grapple_target and self.grapple_target.is_alive:
+            print(f"** AUTOMATIC CRUSH: {self.name} crushes {self.grapple_target.name}! **")
+            crush_damage = roll('2d8') + get_ability_modifier(self.stats['str'])
+            print(f"** {self.grapple_target.name} takes {crush_damage} bludgeoning damage from being crushed! **")
+            self.grapple_target.take_damage(crush_damage, attacker=self)
+        elif self.is_grappling and (not self.grapple_target or not self.grapple_target.is_alive):
+            # Target is dead or missing, release grapple
+            print(f"** {self.name} releases its grapple **")
+            self.is_grappling = False
+            self.grapple_target = None
 
     def take_damage(self, damage, attacker=None):
         """Override to handle grapple breaking on death"""
