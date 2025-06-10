@@ -7,6 +7,8 @@ from actions.special_actions import LayOnHandsAction, EscapeGrappleAction  # ADD
 class PaladinAIBrain(AIBrain):
     """Advanced Paladin AI with intelligent healing system and spell slot conservation."""
 
+    # File: ai/character_ai/paladin_ai.py - Fixed Emergency Healing Logic
+
     def choose_actions(self, character, combatants):
         """
         Enhanced AI Logic with Critical Situation Handling:
@@ -17,6 +19,8 @@ class PaladinAIBrain(AIBrain):
         5. Choose optimal healing method (Lay on Hands vs Cure Wounds)
         6. Consider tactical retreat when badly wounded
         7. Balance offense vs healing based on threat level and resources
+        
+        FIXED: Lay on Hands is a Bonus Action per PHB 2024, can be combined with other actions
         """
         action = None
         bonus_action = None
@@ -39,7 +43,7 @@ class PaladinAIBrain(AIBrain):
         # --- CHANNEL DIVINITY ASSESSMENT ---
         channel_divinity_decision = self._assess_channel_divinity_usage(character, grapple_decision)
         
-        # Use Channel Divinity if beneficial (as bonus action)
+        # Use Channel Divinity if beneficial (as bonus action or instant effect)
         if channel_divinity_decision['should_use'] and not bonus_action:
             if channel_divinity_decision['option'] == 'Peerless Athlete':
                 # Set up to use Peerless Athlete
@@ -64,22 +68,34 @@ class PaladinAIBrain(AIBrain):
                     character._ai_has_made_critical_decision = True
                     character._critical_decision_reason = "EMERGENCY HEALING - Life-threatening situation"
                     print(f"[EMERGENCY AI] {character.name}: CRITICAL SURVIVAL - Using emergency Cure Wounds!")
-            elif healing_priority['use_lay_on_hands']:
+            
+            # FIXED: If out of spell slots, use Lay on Hands as BONUS ACTION and still have ACTION available
+            elif healing_priority['use_lay_on_hands'] and not bonus_action:
                 loh_action = self._get_lay_on_hands_action(character)
                 if loh_action:
-                    # FIXED: For emergency, use Lay on Hands as ACTION, not bonus action
-                    action = loh_action  # This uses the ACTION slot
-                    action_target = healing_priority['heal_target']
-                    character._ai_has_made_critical_decision = True
-                    character._critical_decision_reason = "EMERGENCY HEALING - Using Lay on Hands as action"
-                    print(f"[EMERGENCY AI] {character.name}: CRITICAL SURVIVAL - Using emergency Lay on Hands as ACTION!")
+                    bonus_action = loh_action  # CORRECT: Lay on Hands is Bonus Action
+                    bonus_action_target = healing_priority['heal_target']
+                    print(f"[EMERGENCY AI] {character.name}: CRITICAL SURVIVAL - Using emergency Lay on Hands as BONUS ACTION!")
+                    
+                    # Since we're using bonus action for healing, we can still use our action
+                    # If grappled, prioritize escape attempt
+                    if grapple_decision['should_escape']:
+                        from actions.special_actions import EscapeGrappleAction
+                        action = EscapeGrappleAction()
+                        character._ai_has_made_critical_decision = True
+                        character._critical_decision_reason = "EMERGENCY: Lay on Hands + Escape attempt"
+                        print(f"[EMERGENCY AI] {character.name}: Combining emergency healing with escape attempt!")
             
             # SAFETY CHECK: Ensure we have valid targets for emergency healing
-            if not action_target:
-                action_target = character  # Default to self-healing
+            if not action_target and not bonus_action_target:
+                if bonus_action_target:
+                    action_target = character  # Default action target to self
+                else:
+                    action_target = character  # Default to self-healing
 
-        # PRIORITY 2: Handle grapple situation (ONLY if not in critical survival mode)
-        elif grapple_decision['should_escape']:
+        # PRIORITY 2: Handle grapple situation (ONLY if not in critical survival mode with action already chosen)
+        elif grapple_decision['should_escape'] and not action:
+            from actions.special_actions import EscapeGrappleAction
             action = EscapeGrappleAction()
             print(f"[GRAPPLE AI] {character.name}: {grapple_decision['reason']}")
             
@@ -87,7 +103,7 @@ class PaladinAIBrain(AIBrain):
             character._critical_decision_reason = "Grapple escape takes priority"
         
         # PRIORITY 3: Critical healing (only if not escaping grapple or in emergency)
-        elif healing_priority['critical_healing_needed']:
+        elif healing_priority['critical_healing_needed'] and not action:
             if healing_priority['use_cure_wounds']:
                 cure_action = self._get_cure_wounds_action(character)
                 if cure_action:
@@ -97,28 +113,28 @@ class PaladinAIBrain(AIBrain):
                     character._ai_has_made_critical_decision = True
                     character._critical_decision_reason = "Critical healing takes priority"
                     print(f"[HEALING AI] {character.name}: Critical healing! Using Cure Wounds (~11.0 HP).")
-            elif healing_priority['use_lay_on_hands']:
+            elif healing_priority['use_lay_on_hands'] and not bonus_action:
                 loh_action = self._get_lay_on_hands_action(character)
                 if loh_action:
-                    bonus_action = loh_action
+                    bonus_action = loh_action  # CORRECT: Lay on Hands is Bonus Action
                     bonus_action_target = healing_priority['heal_target']
                     print(f"[HEALING AI] {character.name}: Critical healing! Using Lay on Hands.")
 
         # PRIORITY 4: Moderate healing (only as bonus action)
-                if healing_priority['moderate_healing_needed'] and not bonus_action:
-                    if healing_priority['use_lay_on_hands']:
-                        loh_action = self._get_lay_on_hands_action(character)
-                        if loh_action:
-                            bonus_action = loh_action
-                            bonus_action_target = healing_priority['heal_target']
-                            print(f"[HEALING AI] {character.name}: Moderate healing, using Lay on Hands.")
+        if healing_priority['moderate_healing_needed'] and not bonus_action:
+            if healing_priority['use_lay_on_hands']:
+                loh_action = self._get_lay_on_hands_action(character)
+                if loh_action:
+                    bonus_action = loh_action  # CORRECT: Lay on Hands is Bonus Action
+                    bonus_action_target = healing_priority['heal_target']
+                    print(f"[HEALING AI] {character.name}: Moderate healing, using Lay on Hands.")
 
         # PRIORITY 4.5: Channel Divinity usage (Peerless Athlete)
         if hasattr(character, '_use_peerless_athlete') and character._use_peerless_athlete and not bonus_action:
-                    # Use Peerless Athlete - call it directly and mark bonus action as used
-                    if character.use_peerless_athlete():
-                        character._use_peerless_athlete = False
-                        print(f"[CHANNEL DIVINITY] {character.name}: Used Peerless Athlete for grapple escape advantage!")
+            # Use Peerless Athlete - call it directly and mark bonus action as used
+            if character.use_peerless_athlete():
+                character._use_peerless_athlete = False
+                print(f"[CHANNEL DIVINITY] {character.name}: Used Peerless Athlete for grapple escape advantage!")
 
         # PRIORITY 5: Tactical retreat logic (only if not grappled and no action chosen)
         if retreat_decision['should_retreat'] and not action and not resource_status['conserve_slots']:
@@ -132,6 +148,7 @@ class PaladinAIBrain(AIBrain):
                     print(f"[TACTICAL AI] {character.name}: Retreating and using ranged attack!")
             
             if not action:
+                from actions.base_actions import AttackAction
                 action = AttackAction(character.equipped_weapon)
                 character._ai_has_made_critical_decision = True
                 character._critical_decision_reason = "Tactical retreat movement"
@@ -152,6 +169,7 @@ class PaladinAIBrain(AIBrain):
                         print(f"[TACTICAL AI] {character.name}: Target far away, using ranged spell!")
 
             if not action:
+                from actions.base_actions import AttackAction
                 attack_action = AttackAction(character.equipped_weapon)
                 
                 if resource_status['conserve_slots']:
@@ -194,6 +212,7 @@ class PaladinAIBrain(AIBrain):
 
         # SAFETY CHECK: Ensure we always have a valid action
         if not action:
+            from actions.base_actions import AttackAction
             action = AttackAction(character.equipped_weapon)
             print(f"[FALLBACK] {character.name}: No action set, defaulting to attack")
         
@@ -201,7 +220,7 @@ class PaladinAIBrain(AIBrain):
             action_target = character  # Default to self if no target
             print(f"[FALLBACK] {character.name}: No target set, defaulting to self")
 
-        # MISSING RETURN STATEMENT - THIS WAS THE BUG!
+        # FIXED: Return the corrected action structure
         return {
             'action': action,
             'bonus_action': bonus_action,

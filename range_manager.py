@@ -445,11 +445,28 @@ class CombatRangeManager:
 # Integration function for existing AI brains
 def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
     """Enhance existing AI brain with range-based tactical analysis"""
+    
+    # FIXED: Don't override specialized multiattack AI that already handles grappling optimally
+    from ai.enemy_ai.beast.giant_constrictor_snake_ai import GiantConstrictorSnakeAI
+    if isinstance(ai_brain, GiantConstrictorSnakeAI):
+        print(f"[TACTICAL AI] Skipping range analysis for specialized GiantConstrictorSnakeAI")
+        return ai_brain  # Return unchanged - this AI already handles tactics optimally
+    
     original_choose_actions = ai_brain.choose_actions
 
     def enhanced_choose_actions(character, combatants):
         # Get the original decision
         original_decision = original_choose_actions(character, combatants)
+
+        # CRITICAL: Check if snake AI made a critical decision that should NOT be overridden
+        if hasattr(character, '_snake_ai_critical_decision') and character._snake_ai_critical_decision:
+            reason = getattr(character, '_snake_ai_decision_reason', 'Snake AI critical decision')
+            print(f"[TACTICAL AI] {character.name}: Respecting snake AI decision - {reason}")
+            # Clear the flag for next turn
+            character._snake_ai_critical_decision = False
+            if hasattr(character, '_snake_ai_decision_reason'):
+                delattr(character, '_snake_ai_decision_reason')
+            return original_decision
 
         # FIXED: Check if specialized AI made a critical decision that shouldn't be overridden
         if hasattr(character, '_ai_has_made_critical_decision') and character._ai_has_made_critical_decision:
@@ -463,7 +480,7 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
 
         # Handle case where AI returns None
         if original_decision is None:
-            from actions.base_actions import AttackAction  # Import here temporarily
+            from actions.base_actions import AttackAction
             return {
                 'action': AttackAction(character.equipped_weapon),
                 'bonus_action': None,
@@ -510,7 +527,6 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
 
     ai_brain.choose_actions = enhanced_choose_actions
     return ai_brain
-
 
 # Example usage with your existing code
 def initialize_combat_with_ranges(combatants):

@@ -1,10 +1,9 @@
 # File: enemies/cr_2_5/giant_constrictor_snake.py
-# File: enemies/cr_2_5/giant_constrictor_snake.py
 from ..base_enemy import Enemy
 from equipment.weapons.base_weapon import Weapon
 from ai.enemy_ai.beast.giant_constrictor_snake_ai import GiantConstrictorSnakeAI
 from actions.special_actions import MultiattackAction
-from actions.base_actions import AttackAction  # ADD THIS LINE
+from actions.base_actions import AttackAction
 from core import roll_d20, get_ability_modifier, roll
 
 
@@ -40,7 +39,7 @@ class GiantConstrictorSnake(Enemy):
             position=position,
             initiative_bonus=0,
             speed=30
-)
+        )
         self.secondary_weapon = snake_constrict
         self.ai_brain = GiantConstrictorSnakeAI()
         self.size = 'Huge'
@@ -166,7 +165,7 @@ class GiantConstrictorSnake(Enemy):
             print(f"** The snake can choose to crush {target.name} (using its action) instead of multiattack! **")  
 
     def crush_grappled_target(self, action_type="ACTION"):
-        """Use action to deal automatic constrict damage to grappled target - PROPER D&D RULES."""
+        """OPTIMAL: Use action to deal guaranteed Constrict damage to grappled target."""
         if not self.is_grappling or not self.grapple_target or not self.grapple_target.is_alive:
             print(f"{action_type}: {self.name} has no target to crush!")
             return False
@@ -174,68 +173,18 @@ class GiantConstrictorSnake(Enemy):
         target = self.grapple_target
         print(f"{action_type}: {self.name} crushes {target.name} with its coils!")
         
-        # Same damage as constrict attack
+        # GUARANTEED DAMAGE: When crushing an already-grappled target, no save required
         damage = roll(self.secondary_weapon.damage_dice)
         total_damage = damage + get_ability_modifier(self.stats['str'])
         
-        print(f"{self.name} deals {total_damage} bludgeoning damage ({damage} [{self.secondary_weapon.damage_dice}] +{get_ability_modifier(self.stats['str'])} [STR])")
+        print(f"{self.name} deals {total_damage} bludgeoning damage ({damage} [{self.secondary_weapon.damage_dice}] +{get_ability_modifier(self.stats['str'])} [STR]) - GUARANTEED")
         target.take_damage(total_damage, attacker=self)
         
         print(f"** {target.name} remains grappled and can attempt to escape on their turn! **")
         return True
 
-    def process_effects_on_turn_start(self):
-        """Process ongoing spell effects at start of turn - NO automatic crush damage."""
-        super().process_effects_on_turn_start()
-
-        # Process Searing Smite ongoing damage (if any)
-        if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
-            effect = self.searing_smite_effect
-            dice_count = effect['dice_count']
-            save_dc = effect['save_dc']
-            caster = effect['caster']
-            
-            # Deal ongoing fire damage
-            ongoing_damage = 0
-            for _ in range(dice_count):
-                ongoing_damage += roll('1d6')
-            
-            print(f"** {self.name} takes {ongoing_damage} fire damage ({dice_count}d6) from Searing Smite! **")
-            self.take_damage(ongoing_damage, attacker=caster)
-            
-            # Constitution saving throw to end the effect
-            if self.is_alive:
-                print(f"** {self.name} makes a Constitution saving throw to extinguish the flames **")
-                if self.make_saving_throw('con', save_dc):
-                    print(f"** {self.name} succeeds and extinguishes the searing flames! **")
-                    self.searing_smite_effect['active'] = False
-                    del self.searing_smite_effect
-                else:
-                    print(f"** {self.name} fails and continues burning! **")
-
-        # Check if grappled target is still alive and valid
-        if self.is_grappling and (not self.grapple_target or not self.grapple_target.is_alive):
-            print(f"** {self.name} releases its grapple (target no longer valid) **")
-            self.is_grappling = False
-            self.grapple_target = None
-
-    def take_damage(self, damage, attacker=None):
-        """Override to handle grapple breaking on death"""
-        super().take_damage(damage, attacker)
-
-        # If the snake dies, release any grappled targets
-        if not self.is_alive and self.is_grappling and self.grapple_target:
-            print(f"** {self.grapple_target.name} is freed from the grapple! **")
-            self.grapple_target.is_grappled = False
-            if hasattr(self.grapple_target, 'grappler'):
-                delattr(self.grapple_target, 'grappler')
-            if hasattr(self.grapple_target, 'grapple_escape_dc'):
-                delattr(self.grapple_target, 'grapple_escape_dc')
-            self.is_grappling = False
-            self.grapple_target = None
-
     def take_turn(self, combatants):
-        """Override take_turn to handle special crush action."""
+        """Override take_turn to handle optimal crush action."""
         self.has_used_action = False
         self.has_used_bonus_action = False
         
@@ -322,9 +271,9 @@ class GiantConstrictorSnake(Enemy):
         if action and not self.has_used_action:
             action_target = chosen_actions.get('action_target')
             
-            # SPECIAL HANDLING: Check if AI wants to crush grappled target
+            # OPTIMAL HANDLING: Check if AI wants to crush grappled target
             if isinstance(action, str) and action == 'crush_grappled_target':
-                # Special action: crush the grappled target
+                # Special action: crush the grappled target for guaranteed damage
                 success = self.crush_grappled_target("ACTION")
                 if success:
                     self.has_used_action = True
@@ -334,3 +283,55 @@ class GiantConstrictorSnake(Enemy):
                 self.has_used_action = True
         else:
             print("ACTION: (None)")
+
+        print("REACTION: (Not used)")
+
+    def process_effects_on_turn_start(self):
+        """Process ongoing spell effects at start of turn - NO automatic crush damage."""
+        super().process_effects_on_turn_start()
+
+        # Process Searing Smite ongoing damage (if any)
+        if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
+            effect = self.searing_smite_effect
+            dice_count = effect['dice_count']
+            save_dc = effect['save_dc']
+            caster = effect['caster']
+            
+            # Deal ongoing fire damage
+            ongoing_damage = 0
+            for _ in range(dice_count):
+                ongoing_damage += roll('1d6')
+            
+            print(f"** {self.name} takes {ongoing_damage} fire damage ({dice_count}d6) from Searing Smite! **")
+            self.take_damage(ongoing_damage, attacker=caster)
+            
+            # Constitution saving throw to end the effect
+            if self.is_alive:
+                print(f"** {self.name} makes a Constitution saving throw to extinguish the flames **")
+                if self.make_saving_throw('con', save_dc):
+                    print(f"** {self.name} succeeds and extinguishes the searing flames! **")
+                    self.searing_smite_effect['active'] = False
+                    del self.searing_smite_effect
+                else:
+                    print(f"** {self.name} fails and continues burning! **")
+
+        # Check if grappled target is still alive and valid
+        if self.is_grappling and (not self.grapple_target or not self.grapple_target.is_alive):
+            print(f"** {self.name} releases its grapple (target no longer valid) **")
+            self.is_grappling = False
+            self.grapple_target = None
+
+    def take_damage(self, damage, attacker=None):
+        """Override to handle grapple breaking on death"""
+        super().take_damage(damage, attacker)
+
+        # If the snake dies, release any grappled targets
+        if not self.is_alive and self.is_grappling and self.grapple_target:
+            print(f"** {self.grapple_target.name} is freed from the grapple! **")
+            self.grapple_target.is_grappled = False
+            if hasattr(self.grapple_target, 'grappler'):
+                delattr(self.grapple_target, 'grappler')
+            if hasattr(self.grapple_target, 'grapple_escape_dc'):
+                delattr(self.grapple_target, 'grapple_escape_dc')
+            self.is_grappling = False
+            self.grapple_target = None

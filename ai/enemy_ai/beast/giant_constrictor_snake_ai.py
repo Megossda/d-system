@@ -6,65 +6,32 @@ import random
 
 
 class GiantConstrictorSnakeAI(IntelligenceBasedAI):
-    """Giant Constrictor Snake AI - INT 1, pure predator instinct."""
+    """Giant Constrictor Snake AI - INT 1, pure predator instinct with optimal crushing tactics."""
 
-    def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
-        """Enhance existing AI brain with range-based tactical analysis"""
-        
-        # NEW: Don't override specialized AI that handles multiattack
-        from ai.enemy_ai.beast.giant_constrictor_snake_ai import GiantConstrictorSnakeAI
-        if isinstance(ai_brain, GiantConstrictorSnakeAI):
-            print(f"[TACTICAL AI] Skipping range analysis for specialized multiattack AI")
-            return ai_brain  # Return unchanged
-        
-        original_choose_actions = ai_brain.choose_actions
-
-        def enhanced_choose_actions(character, combatants):
-            # Rest of the function stays the same...
-            original_decision = original_choose_actions(character, combatants)
-            target = original_decision.get('action_target')
-            if not target:
-                return original_decision
-
-            recommendations = range_manager.get_tactical_recommendations(character, target)
-
-            if recommendations['best_option']:
-                best = recommendations['best_option']
-                print(f"[TACTICAL AI] {character.name} analyzing options:")
-                print(f"  Current distance to {target.name}: {recommendations['current_distance']}ft")
-                print(f"  Best option: {best['action_description']} (Priority: {best['priority']:.1f})")
-
-                if best['type'] == 'weapon':
-                    from actions import AttackAction
-                    original_decision['action'] = AttackAction(best['weapon'])
-                elif best['type'] == 'spell':
-                    from actions import CastSpellAction
-                    original_decision['action'] = CastSpellAction(best['spell'])
-
-            return original_decision
-
-        ai_brain.choose_actions = enhanced_choose_actions
-        return ai_brain
-    
     def instinctive_behavior(self, character, target):
-        """Snake instincts: crush grappled prey OR attempt new grapple."""
+        """Snake instincts: CRUSH grappled prey for guaranteed damage OR attempt new grapple."""
         distance = abs(character.position - target.position)
         
-        # If already grappling prey, CRUSH for guaranteed damage
+        # PRIORITY 1: If already grappling prey, CRUSH for guaranteed damage
         if hasattr(character, 'is_grappling') and character.is_grappling:
             if hasattr(character, 'grapple_target') and character.grapple_target and character.grapple_target.is_alive:
                 grappled_target = character.grapple_target
                 
-                # ALWAYS crush for guaranteed damage vs high AC targets
+                # OPTIMAL: Use dedicated crush action for guaranteed damage
                 print(f"[SNAKE INSTINCT] {character.name} chooses to crush its grappled prey (guaranteed damage)")
+                
+                # CRITICAL: Mark this as a specialized decision that should NOT be overridden
+                character._snake_ai_critical_decision = True
+                character._snake_ai_decision_reason = "Optimal crush for guaranteed damage"
+                
                 return {
-                    'action': 'crush_grappled_target',  # Special action type
+                    'action': 'crush_grappled_target',  # Special action for guaranteed damage
                     'bonus_action': None,
                     'action_target': grappled_target,
                     'bonus_action_target': None
                 }
         
-        # Not grappling - try to grapple
+        # PRIORITY 2: Not grappling - try to grapple if in range
         if distance <= 10:
             print(f"[SNAKE INSTINCT] {character.name} attempts to grapple prey")
             return {
@@ -74,10 +41,10 @@ class GiantConstrictorSnakeAI(IntelligenceBasedAI):
                 'bonus_action_target': None
             }
         
-        # Too far away
+        # PRIORITY 3: Too far away - move closer (handled by movement system)
         print(f"[SNAKE INSTINCT] {character.name} needs to get closer")
         return {
-            'action': AttackAction(character.equipped_weapon),
+            'action': self._get_multiattack_action(character),  # Will move closer via movement system
             'bonus_action': None,
             'action_target': target,
             'bonus_action_target': None
