@@ -197,6 +197,15 @@ class CombatRangeManager:
         current_distance = self.get_distance_between(attacker, target)
         recommendations = []
 
+        # Analyze multiattack actions first (highest priority for creatures that have them)
+        if hasattr(attacker, 'available_actions'):
+            from actions.special_actions import MultiattackAction
+            for action in attacker.available_actions:
+                if isinstance(action, MultiattackAction):
+                    multiattack_rec = self._analyze_multiattack_option(attacker, target, action, current_distance)
+                    if multiattack_rec:
+                        recommendations.append(multiattack_rec)
+
         # Analyze primary weapon
         if hasattr(attacker, 'equipped_weapon') and attacker.equipped_weapon:
             rec = self._analyze_weapon_option(attacker, target, attacker.equipped_weapon, current_distance, "primary")
@@ -236,6 +245,45 @@ class CombatRangeManager:
             'best_option': recommendations[0] if recommendations else None
         }
 
+    def _analyze_multiattack_option(self, attacker, target, multiattack_action, current_distance):
+        """Analyze a multiattack action option."""
+        # Multiattack is typically melee-based
+        is_in_range = current_distance <= 5  # Most multiattacks require melee range
+        movement_needed = 0
+        can_reach_this_turn = True
+        
+        if not is_in_range:
+            movement_needed = current_distance - 5
+            attacker_speed = getattr(attacker, 'speed', 30)
+            can_reach_this_turn = movement_needed <= attacker_speed
+        
+        # Calculate priority - multiattack should be VERY high priority
+        priority = 40.0  # Base high priority for multiattack
+        
+        if is_in_range:
+            priority += 15  # Big bonus for being in range
+            action_description = "Use Multiattack"
+        elif can_reach_this_turn:
+            priority += 10  # Good bonus for reachable multiattack
+            action_description = f"Move {movement_needed}ft and use Multiattack"
+        else:
+            priority -= 20  # Penalty for unreachable
+            action_description = f"Move toward target for future Multiattack"
+        
+        # Special bonus for creatures designed around multiattack (like snakes)
+        if hasattr(attacker, 'is_grappling') or 'Snake' in attacker.name:
+            priority += 10  # Extra priority for grappling creatures
+        
+        return {
+            'type': 'multiattack',
+            'action': multiattack_action,
+            'is_in_range': is_in_range,
+            'movement_needed': movement_needed,
+            'can_reach_this_turn': can_reach_this_turn,
+            'action_description': action_description,
+            'priority': priority
+        }
+
     def _analyze_weapon_option(self, attacker, target, weapon, current_distance, weapon_type):
         """Analyze a specific weapon option"""
         weapon_range = WeaponRanges.get_weapon_range(weapon)
@@ -245,6 +293,7 @@ class CombatRangeManager:
         # Calculate movement needed
         movement_needed = 0
         action_description = ""
+        can_reach_this_turn = True
 
         if is_in_range:
             action_description = f"Attack with {weapon.name}"
@@ -257,10 +306,21 @@ class CombatRangeManager:
             else:
                 # For melee weapons, move to get in range
                 movement_needed = current_distance - weapon_range
-                action_description = f"Move {movement_needed}ft and attack with {weapon.name}"
+                
+                # Check if we can actually reach with available movement
+                attacker_speed = getattr(attacker, 'speed', 30)
+                if movement_needed <= attacker_speed:
+                    action_description = f"Move {movement_needed}ft and attack with {weapon.name}"
+                else:
+                    action_description = f"Move {attacker_speed}ft toward target (still {movement_needed - attacker_speed}ft away)"
+                    can_reach_this_turn = False
 
         # Calculate priority score
         priority = self._calculate_weapon_priority(weapon, is_in_range, movement_needed, is_ranged, current_distance)
+        
+        # Heavily penalize options that can't reach target this turn
+        if not can_reach_this_turn:
+            priority -= 50  # Major penalty for unreachable targets
 
         return {
             'type': 'weapon',
@@ -270,6 +330,7 @@ class CombatRangeManager:
             'is_ranged': is_ranged,
             'is_in_range': is_in_range,
             'movement_needed': movement_needed,
+            'can_reach_this_turn': can_reach_this_turn,
             'action_description': action_description,
             'priority': priority
         }
@@ -389,6 +450,16 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
         # Get the original decision
         original_decision = original_choose_actions(character, combatants)
 
+        # FIXED: Check if specialized AI made a critical decision that shouldn't be overridden
+        if hasattr(character, '_ai_has_made_critical_decision') and character._ai_has_made_critical_decision:
+            reason = getattr(character, '_critical_decision_reason', 'Critical AI decision')
+            print(f"[TACTICAL AI] {character.name}: Respecting specialized AI decision - {reason}")
+            # Clear the flag for next turn
+            character._ai_has_made_critical_decision = False
+            if hasattr(character, '_critical_decision_reason'):
+                delattr(character, '_critical_decision_reason')
+            return original_decision
+
         # Find target
         target = original_decision.get('action_target')
         if not target:
@@ -405,6 +476,14 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
             print(f"  Current distance to {target.name}: {recommendations['current_distance']}ft")
             print(f"  Best option: {best['action_description']} (Priority: {best['priority']:.1f})")
 
+            # Only use tactical recommendation if it's actually good
+            if best['priority'] < 0:
+                print(f"  Tactical option not viable, using original AI decision")
+                return original_decision
+
+            # Store tactical recommendation for movement execution
+            character.ai_brain.last_tactical_recommendation = best
+
             # Update the action based on best recommendation
             if best['type'] == 'weapon':
                 from actions import AttackAction
@@ -412,6 +491,9 @@ def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
             elif best['type'] == 'spell':
                 from actions import CastSpellAction
                 original_decision['action'] = CastSpellAction(best['spell'])
+            elif best['type'] == 'multiattack':
+                # Properly handle multiattack recommendations
+                original_decision['action'] = best['action']
 
         return original_decision
 

@@ -4,7 +4,7 @@ from .base_actions import Action
 class LayOnHandsAction(Action):
     """Represents the Paladin's Lay on Hands ability."""
 
-    def __init__(self):  # FIXED: was def **init**
+    def __init__(self):
         super().__init__("Lay on Hands")
 
     def execute(self, performer, target=None, action_type="BONUS ACTION"):
@@ -16,9 +16,11 @@ class LayOnHandsAction(Action):
 class MultiattackAction(Action):
     """An action that represents a creature's multiattack."""
 
-    def __init__(self, creature):  # FIXED: was def **init**
+    def __init__(self, creature):
         super().__init__("Multiattack")
         self.creature = creature
+        # FIXED: Store the creature reference for movement calculations
+        self.action = self  # For compatibility with movement detection
 
     def execute(self, performer, target, action_type="ACTION"):
         if hasattr(performer, 'multiattack'):

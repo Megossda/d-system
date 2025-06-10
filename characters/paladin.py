@@ -6,6 +6,7 @@ from spells.level_1.cure_wounds import cure_wounds
 from spells.level_1.guiding_bolt import guiding_bolt
 from effects import SearingSmiteEffect
 from actions import CastSpellAction, LayOnHandsAction
+from actions.special_actions import EscapeGrappleAction
 from ai.character_ai.paladin_ai import PaladinAIBrain
 from systems.paladin.channel_divinity import PaladinChannelDivinityMixin
 
@@ -42,6 +43,9 @@ class Paladin(Character, PaladinChannelDivinityMixin):
         # Level 1 Features
         self.lay_on_hands_pool = level * 5
         self.available_bonus_actions.append(LayOnHandsAction())
+        
+        # FIXED: Add Escape Grapple action to available actions
+        self.available_actions.append(EscapeGrappleAction())
 
         if self.oath:
             self.oath_spells = self.oath.get_oath_spells(self.level)
@@ -219,6 +223,61 @@ class Paladin(Character, PaladinChannelDivinityMixin):
             print(f"No valid conditions to remove on {target.name}")
             return False
 
+    def attempt_grapple_escape(self, grappler, action_type="ACTION"):
+        """Attempt to escape from a grapple using Athletics or Acrobatics (PHB 2024)"""
+        print(f"--- {self.name} attempts to break free from {grappler.name}'s grapple! ---")
+
+        # Choose between Athletics (STR) or Acrobatics (DEX)
+        athletics_mod = get_ability_modifier(self.stats['str'])
+        acrobatics_mod = get_ability_modifier(self.stats['dex'])
+
+        # For Paladin, Athletics is usually better (STR-based class + proficiency)
+        if 'Athletics' in self.skill_proficiencies:
+            athletics_mod += self.get_proficiency_bonus()
+            chosen_skill = "Athletics"
+            my_modifier = athletics_mod
+            ability = "STR"
+            prof_text = f" +{self.get_proficiency_bonus()} (Prof)"
+        elif 'Acrobatics' in self.skill_proficiencies:
+            acrobatics_mod += self.get_proficiency_bonus()
+            chosen_skill = "Acrobatics"
+            my_modifier = acrobatics_mod
+            ability = "DEX"
+            prof_text = f" +{self.get_proficiency_bonus()} (Prof)"
+        else:
+            # No proficiency, choose better raw modifier
+            if athletics_mod >= acrobatics_mod:
+                chosen_skill = "Athletics"
+                my_modifier = athletics_mod
+                ability = "STR"
+            else:
+                chosen_skill = "Acrobatics"
+                my_modifier = acrobatics_mod
+                ability = "DEX"
+            prof_text = ""
+
+        # Make the escape attempt
+        escape_roll, _ = roll_d20()
+        my_total = escape_roll + my_modifier
+
+        # PHB 2024: Escape DC = 8 + grappler's STR mod + grappler's prof bonus
+        grappler_str_mod = get_ability_modifier(grappler.stats['str'])
+        grappler_prof = grappler.get_proficiency_bonus()
+        escape_dc = 8 + grappler_str_mod + grappler_prof
+
+        print(f"{action_type}: {self.name} ({chosen_skill}): {escape_roll} (1d20) +{my_modifier} ({ability}{prof_text}) = {my_total}")
+        print(f"Escape DC: 8 +{grappler_str_mod} (STR) +{grappler_prof} (Prof) = {escape_dc}")
+
+        if my_total >= escape_dc:
+            print(f"** {self.name} breaks free from the grapple! **")
+            self.is_grappled = False
+            grappler.is_grappling = False
+            grappler.grapple_target = None
+            return True
+        else:
+            print(f"** {self.name} fails to break free and remains grappled! **")
+            return False
+
     def long_rest_recovery(self):
         """Override to handle both spell slots and Lay on Hands recovery."""
         # Recover spell slots
@@ -262,7 +321,7 @@ class Paladin(Character, PaladinChannelDivinityMixin):
             return False
         return spell.cast(self, target)
 
-    def attack(self, target, action_type="ACTION", weapon=None, extra_damage_dice=None):
+    def attack(self, target, action_type="ACTION", weapon=None, extra_damage_dice=None, allow_divine_smite=None):
         """Paladin's attack with PHB 2024 Divine Smite as a spell."""
         if not self.is_alive or not target or not target.is_alive: return
 
@@ -348,11 +407,22 @@ class Paladin(Character, PaladinChannelDivinityMixin):
                 if self.concentrating_on == searing_smite:
                     self.concentrating_on = None
 
-            # PHB 2024: Divine Smite as a spell (check if we have it prepared and slots available)
+            # FIXED: Divine Smite with conservation check
             from spells.level_1.divine_smite import divine_smite
+            should_use_divine_smite = False
+            
+            # Check if Divine Smite is available
             if (divine_smite in self.prepared_spells and
                     any(self.spell_slots.get(level, 0) > 0 for level in range(1, 6))):
+                
+                # If allow_divine_smite is explicitly set, use that
+                if allow_divine_smite is not None:
+                    should_use_divine_smite = allow_divine_smite
+                else:
+                    # Otherwise, check conservation status
+                    should_use_divine_smite = self._should_use_divine_smite()
 
+            if should_use_divine_smite:
                 # Find highest available spell slot (Paladins often want to maximize smite damage)
                 smite_level = None
                 for level in range(5, 0, -1):  # Check from 5th down to 1st
@@ -385,6 +455,9 @@ class Paladin(Character, PaladinChannelDivinityMixin):
                         damage_breakdown_parts.append(f"{smite_damage} [{total_smite_dice}d8 Divine Smite]")
 
                     total_damage += smite_damage
+            elif divine_smite in self.prepared_spells:
+                # Have Divine Smite but choosing not to use it
+                print(f"** {self.name} restrains from using Divine Smite (conserving spell slots) **")
 
             # Ability modifier (not doubled on crit)
             ability_modifier = self.get_damage_modifier()
@@ -397,6 +470,32 @@ class Paladin(Character, PaladinChannelDivinityMixin):
             target.take_damage(total_damage, attacker=self)
         else:
             print("The attack misses.")
+
+    def _should_use_divine_smite(self):
+        """Check if we should use Divine Smite based on current conservation status."""
+        total_slots = sum(self.spell_slots.values())
+        our_hp_percent = self.hp / self.max_hp
+        
+        # Check if we have Cure Wounds prepared
+        from spells.level_1.cure_wounds import cure_wounds
+        has_cure_wounds_prepared = cure_wounds in getattr(self, 'prepared_spells', [])
+        
+        # Conservation rules (same as AI logic):
+        # 1. If we have ≤1 spell slot and Cure Wounds prepared, DON'T smite
+        # 2. If HP ≤ 60% and ≤2 slots, DON'T smite (save for healing)
+        # 3. If HP ≤ 35%, DON'T smite (save for emergency healing)
+        
+        if total_slots <= 1 and has_cure_wounds_prepared:
+            print(f"[DIVINE SMITE] Restraining: Only {total_slots} slot(s) left, need for Cure Wounds")
+            return False
+        elif our_hp_percent <= 0.35 and total_slots >= 1 and has_cure_wounds_prepared:
+            print(f"[DIVINE SMITE] Restraining: Critical HP ({our_hp_percent:.1%}), need slot for Cure Wounds")
+            return False
+        elif our_hp_percent <= 0.60 and total_slots <= 2 and has_cure_wounds_prepared:
+            print(f"[DIVINE SMITE] Restraining: Moderate HP ({our_hp_percent:.1%}) with only {total_slots} slots")
+            return False
+        else:
+            return True
 
     def __str__(self):
         """Enhanced string representation with oath and Channel Divinity info."""

@@ -76,7 +76,7 @@ class Character:
         total_initiative = roll_val + dex_modifier + self.initiative_bonus
         self.initiative = total_initiative
         log_message = f"{self.name} rolls for initiative: {roll_val} (1d20) +{dex_modifier} (DEX)"
-        if self.initiative_bonus != 0:
+        if self.initiative_bonus > 0:
             log_message += f" +{self.initiative_bonus} (Racial Bonus)"
         log_message += f" = {total_initiative}"
         print(log_message)
@@ -108,20 +108,72 @@ class Character:
         self.has_used_bonus_action = False
         chosen_actions = self.ai_brain.choose_actions(self, combatants)
 
-        defender = chosen_actions.get('action_target') or next((c for c in combatants if c.is_alive and c != self),
-                                                               None)
+        defender = chosen_actions.get('action_target') or next((c for c in combatants if c.is_alive and c != self), None)
 
         moved = False
+        movement_executed = 0
+
+        # FIXED: Check if tactical AI recommended movement
         if defender and chosen_actions.get('action'):
             action = chosen_actions.get('action')
-            if isinstance(action, AttackAction) and 'Ranged' not in action.weapon.properties:
-                if abs(self.position - defender.position) > 5:
-                    move_distance = min(self.speed, abs(self.position - defender.position) - 5)
-                    self.position += move_distance if defender.position > self.position else -move_distance
-                    print(f"MOVEMENT: {self.name} moves {move_distance} feet towards {defender.name}.")
-                    moved = True
+            
+            # Get movement recommendation from range manager if available
+            if hasattr(self, 'ai_brain') and hasattr(self.ai_brain, 'last_tactical_recommendation'):
+                tactical_rec = self.ai_brain.last_tactical_recommendation
+                if tactical_rec and tactical_rec.get('movement_needed', 0) > 0:
+                    recommended_movement = min(self.speed, tactical_rec['movement_needed'])
+                    if recommended_movement > 0:
+                        direction = 1 if defender.position > self.position else -1
+                        self.position += recommended_movement * direction
+                        movement_executed = recommended_movement
+                        print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
+                        moved = True
+
+            # Fallback: Original movement logic for attacks
+            if not moved and isinstance(action, AttackAction):
+                weapon = action.weapon
+                is_ranged = hasattr(weapon, 'properties') and 'Ranged' in weapon.properties
+                
+                if not is_ranged:
+                    # For multiattack, we need to consider the shortest range requirement
+                    if hasattr(action, 'action') and hasattr(action.action, 'creature'):
+                        # This is a multiattack action, check what ranges we need
+                        current_distance = abs(self.position - defender.position)
+                        
+                        # For snake multiattack: Bite (10ft) + Constrict (5ft)
+                        # Need to be within 5ft for both to work
+                        if current_distance > 5:
+                            needed_movement = current_distance - 5
+                            actual_movement = min(self.speed, needed_movement)
+                            
+                            if actual_movement > 0:
+                                direction = 1 if defender.position > self.position else -1
+                                self.position += actual_movement * direction
+                                movement_executed = actual_movement
+                                print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name} (multiattack positioning).")
+                                moved = True
+                    else:
+                        # Regular weapon attack movement
+                        weapon_reach = getattr(weapon, 'reach', 5)
+                        current_distance = abs(self.position - defender.position)
+                        
+                        if current_distance > weapon_reach:
+                            needed_movement = current_distance - weapon_reach
+                            actual_movement = min(self.speed, needed_movement)
+                            
+                            if actual_movement > 0:
+                                direction = 1 if defender.position > self.position else -1
+                                self.position += actual_movement * direction
+                                movement_executed = actual_movement
+                                print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
+                                moved = True
+
         if not moved:
             print("MOVEMENT: (None)")
+
+        # Store movement info for tactical AI
+        if hasattr(self, 'ai_brain'):
+            self.ai_brain.last_movement_executed = movement_executed
 
         bonus_action = chosen_actions.get('bonus_action')
         if bonus_action and not self.has_used_bonus_action:
@@ -265,7 +317,6 @@ class Character:
             target.take_damage(total_damage, attacker=self)
         else:
             print("The attack misses.")
-
     def make_spell_attack(self, target, spell, action_type="ACTION"):
         if not self.is_alive:
             return False, False  # (hit, is_crit)

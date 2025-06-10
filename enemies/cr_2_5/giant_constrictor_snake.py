@@ -36,7 +36,7 @@ class GiantConstrictorSnake(Enemy):
             shield=None,
             cr='2',
             position=position,
-            initiative_bonus=2,
+            initiative_bonus=0,  # FIXED: DEX +2 gives total +2, no racial bonus
             speed=30
         )
         self.secondary_weapon = snake_constrict

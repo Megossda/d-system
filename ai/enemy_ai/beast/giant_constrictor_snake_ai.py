@@ -8,6 +8,44 @@ import random
 class GiantConstrictorSnakeAI(IntelligenceBasedAI):
     """Giant Constrictor Snake AI - INT 1, pure predator instinct."""
 
+    def enhance_ai_brain_with_range_analysis(ai_brain, range_manager):
+        """Enhance existing AI brain with range-based tactical analysis"""
+        
+        # NEW: Don't override specialized AI that handles multiattack
+        from ai.enemy_ai.beast.giant_constrictor_snake_ai import GiantConstrictorSnakeAI
+        if isinstance(ai_brain, GiantConstrictorSnakeAI):
+            print(f"[TACTICAL AI] Skipping range analysis for specialized multiattack AI")
+            return ai_brain  # Return unchanged
+        
+        original_choose_actions = ai_brain.choose_actions
+
+        def enhanced_choose_actions(character, combatants):
+            # Rest of the function stays the same...
+            original_decision = original_choose_actions(character, combatants)
+            target = original_decision.get('action_target')
+            if not target:
+                return original_decision
+
+            recommendations = range_manager.get_tactical_recommendations(character, target)
+
+            if recommendations['best_option']:
+                best = recommendations['best_option']
+                print(f"[TACTICAL AI] {character.name} analyzing options:")
+                print(f"  Current distance to {target.name}: {recommendations['current_distance']}ft")
+                print(f"  Best option: {best['action_description']} (Priority: {best['priority']:.1f})")
+
+                if best['type'] == 'weapon':
+                    from actions import AttackAction
+                    original_decision['action'] = AttackAction(best['weapon'])
+                elif best['type'] == 'spell':
+                    from actions import CastSpellAction
+                    original_decision['action'] = CastSpellAction(best['spell'])
+
+            return original_decision
+
+        ai_brain.choose_actions = enhanced_choose_actions
+        return ai_brain
+    
     def instinctive_behavior(self, character, target):
         """Snake instincts: constrict prey when possible, otherwise bite."""
         distance = abs(character.position - target.position)
