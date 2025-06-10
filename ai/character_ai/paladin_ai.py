@@ -303,14 +303,14 @@ class PaladinAIBrain(AIBrain):
         escape_dc = getattr(character, 'grapple_escape_dc', 14)
         escape_chance = ((21 + athletics_mod - escape_dc) / 20.0) * 100
         
-        # NEW LOGIC: Always try to escape unless extremely low HP AND poor escape chance
+        # FIXED: ALWAYS try to escape when grappled unless truly hopeless
         should_escape = True
-        reason = f"Grappled - must escape to prevent ongoing damage (escape chance: {escape_chance:.0f}%)"
+        reason = f"Grappled - must escape to regain mobility (escape chance: {escape_chance:.0f}%)"
         
-        # Only exception: very low HP AND very poor escape chance
-        if our_hp_percent <= 0.20 and escape_chance < 25:
+        # Only exception: critically low HP (≤10%) AND terrible escape chance (≤15%)
+        if our_hp_percent <= 0.10 and escape_chance <= 15:
             should_escape = False
-            reason = f"Critically low HP ({our_hp_percent:.1%}) with terrible escape chance ({escape_chance:.0f}%) - healing first"
+            reason = f"Critically low HP ({our_hp_percent:.1%}) with hopeless escape chance ({escape_chance:.0f}%) - attacking instead"
         
         return {
             'should_escape': should_escape,
@@ -431,3 +431,22 @@ class PaladinAIBrain(AIBrain):
     def _get_searing_smite_action(self, character):
         """Get Searing Smite action if available"""
         return next((ba for ba in character.available_bonus_actions if ba.name == "Cast Searing Smite"), None)
+    
+    def _assess_channel_divinity_usage(self, character, grapple_decision):
+        """Assess whether to use Channel Divinity options."""
+        if not hasattr(character, 'channel_divinity_uses') or character.channel_divinity_uses <= 0:
+            return {'should_use': False, 'option': None, 'reason': 'No Channel Divinity uses remaining'}
+        
+        # Peerless Athlete for grapple escape
+        if grapple_decision['should_escape']:
+            # Check if we have Peerless Athlete available
+            if hasattr(character, 'channel_divinity_options'):
+                for option in character.channel_divinity_options:
+                    if option.name == "Peerless Athlete":
+                        return {
+                            'should_use': True,
+                            'option': 'Peerless Athlete',
+                            'reason': f"Use Peerless Athlete for advantage on escape attempt (improves {grapple_decision['escape_chance']:.0f}% chance)"
+                        }
+        
+        return {'should_use': False, 'option': None, 'reason': 'No beneficial Channel Divinity option for current situation'}

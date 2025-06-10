@@ -50,17 +50,13 @@ class GiantConstrictorSnakeAI(IntelligenceBasedAI):
         """Snake instincts: crush grappled prey OR attempt new grapple."""
         distance = abs(character.position - target.position)
         
-        # If already grappling prey, CHOOSE between crushing or attacking
+        # If already grappling prey, CRUSH for guaranteed damage
         if hasattr(character, 'is_grappling') and character.is_grappling:
             if hasattr(character, 'grapple_target') and character.grapple_target and character.grapple_target.is_alive:
                 grappled_target = character.grapple_target
                 
-                # Snake can either:
-                # 1. Use action to crush (guaranteed damage)
-                # 2. Use multiattack to try for more damage
-                
-                # Simple AI: always crush for guaranteed damage
-                print(f"[SNAKE INSTINCT] {character.name} chooses to crush its grappled prey")
+                # ALWAYS crush for guaranteed damage vs high AC targets
+                print(f"[SNAKE INSTINCT] {character.name} chooses to crush its grappled prey (guaranteed damage)")
                 return {
                     'action': 'crush_grappled_target',  # Special action type
                     'bonus_action': None,
