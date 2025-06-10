@@ -20,11 +20,11 @@ class SearingSmite(Spell):
         if not target:
             return False
 
-        # Check if target already has Searing Smite effect
+        # FIXED: Check if target already has Searing Smite effect
         if hasattr(target, 'searing_smite_effect') and target.searing_smite_effect.get('active', False):
             print(f"** {target.name} is already under the effects of Searing Smite! **")
             print(f"** Spell slot expended, but effect does not stack — Searing Smite remains at original intensity **")
-            return False  # Don't waste the spell slot, but acknowledge the attempt
+            return False  # Don't apply new effect, but spell slot is still consumed
 
         # Calculate damage per spell level
         dice_count = spell_level  # 1d6 at 1st, 2d6 at 2nd, etc.

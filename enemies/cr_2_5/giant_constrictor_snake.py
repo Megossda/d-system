@@ -153,15 +153,21 @@ class GiantConstrictorSnake(Enemy):
                 f"{self.name} deals {total_damage} bludgeoning damage ({damage} [{self.secondary_weapon.damage_dice}{'+ crit' if is_crit else ''}] +{attack_modifier} [STR])")
             target.take_damage(total_damage, attacker=self)
 
-            # Apply grapple effect (target must be Large or smaller)
+            # FIXED: Apply grapple effect properly (PHB 2024)
             if target.is_alive:
+                # Set grapple state on both creatures
                 self.is_grappling = True
                 self.grapple_target = target
                 target.is_grappled = True
+                target.grappler = self  # FIXED: Store reference to grappler
+                
+                # PHB 2024: Calculate escape DC = 8 + grappler's STR mod + grappler's prof bonus
+                escape_dc = 8 + get_ability_modifier(self.stats['str']) + self.get_proficiency_bonus()
+                target.grapple_escape_dc = escape_dc
+                
                 print(f"** {target.name} is GRAPPLED by the snake! **")
-                print(f"** {target.name} has the Grappled condition and cannot move! **")
-
-                # Automatic restraint damage at start of grappler's turn
+                print(f"** {target.name} has the Grappled condition: Speed 0, disadvantage on attacks vs others **")
+                print(f"** Escape DC: {escape_dc} (STR Athletics or DEX Acrobatics check) **")
                 print(f"** While grappled, {target.name} will take automatic crush damage each round! **")
         else:
             print("The constrict attack misses.")

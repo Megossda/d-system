@@ -9,8 +9,8 @@ class PaladinAIBrain(AIBrain):
 
     def choose_actions(self, character, combatants):
         """
-        Advanced AI Logic with Spell Slot Conservation:
-        1. Handle grappled condition (escape vs fight)
+        Advanced AI Logic with Spell Slot Conservation and Grapple Handling:
+        1. Handle grappled condition (escape vs fight) - PRIORITY 1
         2. Assess healing needs and spell slot availability
         3. Conserve spell slots for emergency healing
         4. Choose optimal healing method (Lay on Hands vs Cure Wounds)
@@ -26,7 +26,7 @@ class PaladinAIBrain(AIBrain):
         # --- SPELL SLOT CONSERVATION ASSESSMENT ---
         resource_status = self._assess_spell_slot_conservation(character)
 
-        # --- GRAPPLE HANDLING ---
+        # --- GRAPPLE HANDLING (HIGHEST PRIORITY) ---
         grapple_decision = self._assess_grapple_situation(character, action_target)
         
         # --- HEALING ASSESSMENT ---
@@ -39,17 +39,16 @@ class PaladinAIBrain(AIBrain):
 
         # --- DECISION TREE ---
         
-        # PRIORITY 1: Handle grapple situation
-        # PRIORITY 1: Handle grapple situation
+        # PRIORITY 1: Handle grapple situation (ABSOLUTE PRIORITY)
         if grapple_decision['should_escape']:
             action = EscapeGrappleAction()
             print(f"[GRAPPLE AI] {character.name}: {grapple_decision['reason']}")
             
-            # FIXED: Set flag to prevent tactical AI override
+            # Set flag to prevent tactical AI override
             character._ai_has_made_critical_decision = True
-            character._critical_decision_reason = "Grapple escape takes priority over tactical recommendations"
+            character._critical_decision_reason = "Grapple escape takes absolute priority"
         
-        # PRIORITY 2: Critical healing
+        # PRIORITY 2: Critical healing (only if not escaping grapple)
         elif healing_priority['critical_healing_needed']:
             if healing_priority['use_cure_wounds']:
                 # Use Cure Wounds (action)
@@ -130,18 +129,26 @@ class PaladinAIBrain(AIBrain):
                 action = attack_action
 
         # --- OFFENSIVE BONUS ACTIONS ---
-        # Only use Searing Smite if NOT conserving slots and other conditions met
+        # FIXED: Only use Searing Smite if target doesn't already have it
         if (not bonus_action and not character.concentrating_on and
                 not used_spell_slot and character.spell_slots.get(1, 0) > 0 and
                 not resource_status['conserve_slots']):
             
-            # Only use Searing Smite if we're planning to make melee attacks
-            if isinstance(action, AttackAction):
+            # Check if target already has Searing Smite
+            target_has_searing_smite = False
+            if action_target and hasattr(action_target, 'searing_smite_effect'):
+                target_has_searing_smite = action_target.searing_smite_effect.get('active', False)
+            
+            # Only use Searing Smite if target doesn't have it and we're planning melee attacks
+            if not target_has_searing_smite and isinstance(action, AttackAction):
                 smite_action = self._get_searing_smite_action(character)
                 if smite_action:
                     bonus_action = smite_action
                     bonus_action_target = action_target
                     used_spell_slot = True
+                    print(f"[AI CONTROL] {character.name}: Using Searing Smite on fresh target")
+            elif target_has_searing_smite:
+                print(f"[AI CONTROL] {character.name}: Target already has Searing Smite, skipping duplicate")
 
         return {
             'action': action,
@@ -162,7 +169,7 @@ class PaladinAIBrain(AIBrain):
         # Conservation rules:
         # 1. If we have ≤1 spell slot and Cure Wounds prepared, ALWAYS conserve
         # 2. If HP ≤ 60% and ≤2 slots, conserve one for healing
-        # 3. If HP ≤ 35%, conserve at least one slot regardless
+        # 3. If HP ≤ 40%, conserve at least one slot regardless (lowered from 35% for better healing)
         
         conserve_slots = False
         reason = ""
@@ -170,12 +177,12 @@ class PaladinAIBrain(AIBrain):
         if total_slots <= 1 and has_cure_wounds_prepared:
             conserve_slots = True
             reason = f"Only {total_slots} slot(s) left, conserving for Cure Wounds"
-        elif our_hp_percent <= 0.35 and total_slots >= 1 and has_cure_wounds_prepared:
+        elif our_hp_percent <= 0.40 and total_slots >= 1 and has_cure_wounds_prepared:
             conserve_slots = True
-            reason = f"Critical HP ({our_hp_percent:.1%}), conserving slot for Cure Wounds"
+            reason = f"Moderate HP ({our_hp_percent:.1%}), conserving slot for Cure Wounds"
         elif our_hp_percent <= 0.60 and total_slots <= 2 and has_cure_wounds_prepared:
             conserve_slots = True
-            reason = f"Moderate HP ({our_hp_percent:.1%}) with only {total_slots} slots, conserving for healing"
+            reason = f"Lower HP ({our_hp_percent:.1%}) with only {total_slots} slots, conserving for healing"
         
         if conserve_slots:
             print(f"[RESOURCE AI] {character.name}: {reason}")
@@ -198,25 +205,28 @@ class PaladinAIBrain(AIBrain):
         should_escape = False
         reason = ""
         
-        # ALWAYS try to escape if critically wounded (≤35% HP)
-        if our_hp_percent <= 0.35:
+        # FIXED: More aggressive grapple escape logic
+        # ALWAYS try to escape if wounded (≤75% HP) - grappling is very dangerous
+        if our_hp_percent <= 0.75:
             should_escape = True
-            reason = f"Critically wounded ({our_hp_percent:.1%} HP), must escape to heal/retreat!"
+            reason = f"Wounded while grappled ({our_hp_percent:.1%} HP), must escape dangerous situation!"
         
-        # Try to escape if moderately wounded (≤50% HP) and have healing available
-        elif our_hp_percent <= 0.50:
-            from spells.level_1.cure_wounds import cure_wounds
-            has_cure_wounds = (character.spell_slots.get(1, 0) > 0 and
-                              cure_wounds in getattr(character, 'prepared_spells', []))
-            has_lay_on_hands = character.lay_on_hands_pool > 0
+        # Even if healthy, consider escape chance vs attack disadvantage
+        elif our_hp_percent > 0.75:
+            # Calculate escape chance
+            athletics_mod = get_ability_modifier(character.stats['str'])
+            if 'Athletics' in getattr(character, 'skill_proficiencies', []):
+                athletics_mod += character.get_proficiency_bonus()
             
-            if has_cure_wounds or has_lay_on_hands:
+            escape_dc = getattr(character, 'grapple_escape_dc', 15)
+            escape_chance = ((21 + athletics_mod - escape_dc) / 20.0) * 100
+            
+            # If we have good escape chance (≥60%), try it
+            if escape_chance >= 60:
                 should_escape = True
-                reason = f"Moderately wounded ({our_hp_percent:.1%} HP), escaping to heal safely!"
-        
-        # If healthy enough, might choose to fight while grappled
-        if not should_escape:
-            reason = f"Healthy enough ({our_hp_percent:.1%} HP), fighting while grappled"
+                reason = f"Good escape chance ({escape_chance:.0f}%), better than attacking with disadvantage"
+            else:
+                reason = f"Poor escape chance ({escape_chance:.0f}%), fighting while grappled"
         
         return {
             'should_escape': should_escape,
@@ -235,21 +245,28 @@ class PaladinAIBrain(AIBrain):
         heal_target = most_injured
         hp_percent = heal_target.hp / heal_target.max_hp
 
-        # FIXED: More aggressive healing thresholds
-        critical_healing = hp_percent <= 0.35  # 35% or less HP
-        moderate_healing = hp_percent <= 0.60  # 60% or less HP
+        # FIXED: More aggressive healing thresholds for grappled situations
+        if hasattr(character, 'is_grappled') and character.is_grappled:
+            # More aggressive when grappled (taking crush damage each turn)
+            critical_healing = hp_percent <= 0.50  # 50% when grappled
+            moderate_healing = hp_percent <= 0.70  # 70% when grappled
+        else:
+            # Normal thresholds when not grappled
+            critical_healing = hp_percent <= 0.40  # 40% or less HP (was 35%)
+            moderate_healing = hp_percent <= 0.65  # 65% or less HP (was 60%)
 
         # FIXED: Proper Cure Wounds availability check
         from spells.level_1.cure_wounds import cure_wounds
         cure_wounds_prepared = cure_wounds in getattr(character, 'prepared_spells', [])
         has_cure_wounds_slots = character.spell_slots.get(1, 0) > 0
         
-        # FIXED: Check if we can actually use Cure Wounds (prepared AND have slots)
+        # Check if we can actually use Cure Wounds (prepared AND have slots)
         has_cure_wounds = cure_wounds_prepared and has_cure_wounds_slots
         has_lay_on_hands = character.lay_on_hands_pool > 0
 
         # Log for debugging
-        print(f"[HEALING DEBUG] Cure Wounds prepared: {cure_wounds_prepared}, Has slots: {has_cure_wounds_slots}, Can use: {has_cure_wounds}")
+        print(f"[HEALING DEBUG] HP: {character.hp}/{character.max_hp} ({hp_percent:.1%})")
+        print(f"[HEALING DEBUG] Cure Wounds available: {has_cure_wounds} (prep: {cure_wounds_prepared}, slots: {has_cure_wounds_slots})")
         print(f"[HEALING DEBUG] Lay on Hands pool: {character.lay_on_hands_pool}")
 
         # Healing strategy logic with CORRECTED availability checking
@@ -304,7 +321,7 @@ class PaladinAIBrain(AIBrain):
         has_guiding_bolt = (character.spell_slots.get(1, 0) > 0 and
                            guiding_bolt in getattr(character, 'prepared_spells', []))
         
-        if our_hp_percent <= 0.35 and has_guiding_bolt:  # 35% HP or less
+        if our_hp_percent <= 0.40 and has_guiding_bolt:  # 40% HP or less
             if current_distance <= 10:  # Currently in or near melee range
                 should_retreat = True
                 reason = f"Low HP ({our_hp_percent:.1%}), retreating to use ranged attacks"

@@ -77,7 +77,7 @@ class Character:
         self.initiative = total_initiative
         log_message = f"{self.name} rolls for initiative: {roll_val} (1d20) +{dex_modifier} (DEX)"
         if self.initiative_bonus > 0:
-            log_message += f" +{self.initiative_bonus} (Racial Bonus)"
+            log_message += f" +{self.initiative_bonus} (Bonus)"
         log_message += f" = {total_initiative}"
         print(log_message)
 
@@ -106,6 +106,10 @@ class Character:
     def take_turn(self, combatants):
         self.has_used_action = False
         self.has_used_bonus_action = False
+        
+        # FIXED: Store combatants reference for grapple system
+        self.current_combatants = combatants
+        
         chosen_actions = self.ai_brain.choose_actions(self, combatants)
 
         defender = chosen_actions.get('action_target') or next((c for c in combatants if c.is_alive and c != self), None)
@@ -113,60 +117,65 @@ class Character:
         moved = False
         movement_executed = 0
 
-        # FIXED: Check if tactical AI recommended movement
-        if defender and chosen_actions.get('action'):
-            action = chosen_actions.get('action')
-            
-            # Get movement recommendation from range manager if available
-            if hasattr(self, 'ai_brain') and hasattr(self.ai_brain, 'last_tactical_recommendation'):
-                tactical_rec = self.ai_brain.last_tactical_recommendation
-                if tactical_rec and tactical_rec.get('movement_needed', 0) > 0:
-                    recommended_movement = min(self.speed, tactical_rec['movement_needed'])
-                    if recommended_movement > 0:
-                        direction = 1 if defender.position > self.position else -1
-                        self.position += recommended_movement * direction
-                        movement_executed = recommended_movement
-                        print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
-                        moved = True
-
-            # Fallback: Original movement logic for attacks
-            if not moved and isinstance(action, AttackAction):
-                weapon = action.weapon
-                is_ranged = hasattr(weapon, 'properties') and 'Ranged' in weapon.properties
+        # FIXED: Grappled condition prevents movement (PHB 2024)
+        if hasattr(self, 'is_grappled') and self.is_grappled:
+            print("MOVEMENT: (Cannot move - Grappled condition)")
+            moved = True  # Prevent normal movement logic
+        else:
+            # Normal movement logic
+            if defender and chosen_actions.get('action'):
+                action = chosen_actions.get('action')
                 
-                if not is_ranged:
-                    # For multiattack, we need to consider the shortest range requirement
-                    if hasattr(action, 'action') and hasattr(action.action, 'creature'):
-                        # This is a multiattack action, check what ranges we need
-                        current_distance = abs(self.position - defender.position)
-                        
-                        # For snake multiattack: Bite (10ft) + Constrict (5ft)
-                        # Need to be within 5ft for both to work
-                        if current_distance > 5:
-                            needed_movement = current_distance - 5
-                            actual_movement = min(self.speed, needed_movement)
+                # Get movement recommendation from range manager if available
+                if hasattr(self, 'ai_brain') and hasattr(self.ai_brain, 'last_tactical_recommendation'):
+                    tactical_rec = self.ai_brain.last_tactical_recommendation
+                    if tactical_rec and tactical_rec.get('movement_needed', 0) > 0:
+                        recommended_movement = min(self.speed, tactical_rec['movement_needed'])
+                        if recommended_movement > 0:
+                            direction = 1 if defender.position > self.position else -1
+                            self.position += recommended_movement * direction
+                            movement_executed = recommended_movement
+                            print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
+                            moved = True
+
+                # Fallback: Original movement logic for attacks
+                if not moved and isinstance(action, AttackAction):
+                    weapon = action.weapon
+                    is_ranged = hasattr(weapon, 'properties') and 'Ranged' in weapon.properties
+                    
+                    if not is_ranged:
+                        # For multiattack, we need to consider the shortest range requirement
+                        if hasattr(action, 'action') and hasattr(action.action, 'creature'):
+                            # This is a multiattack action, check what ranges we need
+                            current_distance = abs(self.position - defender.position)
                             
-                            if actual_movement > 0:
-                                direction = 1 if defender.position > self.position else -1
-                                self.position += actual_movement * direction
-                                movement_executed = actual_movement
-                                print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name} (multiattack positioning).")
-                                moved = True
-                    else:
-                        # Regular weapon attack movement
-                        weapon_reach = getattr(weapon, 'reach', 5)
-                        current_distance = abs(self.position - defender.position)
-                        
-                        if current_distance > weapon_reach:
-                            needed_movement = current_distance - weapon_reach
-                            actual_movement = min(self.speed, needed_movement)
+                            # For snake multiattack: Bite (10ft) + Constrict (5ft)
+                            # Need to be within 5ft for both to work
+                            if current_distance > 5:
+                                needed_movement = current_distance - 5
+                                actual_movement = min(self.speed, needed_movement)
+                                
+                                if actual_movement > 0:
+                                    direction = 1 if defender.position > self.position else -1
+                                    self.position += actual_movement * direction
+                                    movement_executed = actual_movement
+                                    print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name} (multiattack positioning).")
+                                    moved = True
+                        else:
+                            # Regular weapon attack movement
+                            weapon_reach = getattr(weapon, 'reach', 5)
+                            current_distance = abs(self.position - defender.position)
                             
-                            if actual_movement > 0:
-                                direction = 1 if defender.position > self.position else -1
-                                self.position += actual_movement * direction
-                                movement_executed = actual_movement
-                                print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
-                                moved = True
+                            if current_distance > weapon_reach:
+                                needed_movement = current_distance - weapon_reach
+                                actual_movement = min(self.speed, needed_movement)
+                                
+                                if actual_movement > 0:
+                                    direction = 1 if defender.position > self.position else -1
+                                    self.position += actual_movement * direction
+                                    movement_executed = actual_movement
+                                    print(f"MOVEMENT: {self.name} moves {movement_executed} feet towards {defender.name}.")
+                                    moved = True
 
         if not moved:
             print("MOVEMENT: (None)")
@@ -206,6 +215,13 @@ class Character:
 
         print(f"{action_type}: {self.name} attacks {target.name} (AC: {target.ac}) with {weapon_to_use.name}!")
 
+        # FIXED: Apply grappled condition disadvantage (PHB 2024)
+        grapple_disadvantage = False
+        if hasattr(self, 'is_grappled') and self.is_grappled:
+            if hasattr(self, 'grappler') and self.grappler and target != self.grappler:
+                grapple_disadvantage = True
+                print(f"** {self.name} has disadvantage (Grappled condition - attacking someone other than grappler) **")
+
         if target.grants_advantage_to_next_attacker:
             # Check if advantage has expired
             current_round = getattr(self, 'current_round', 1)
@@ -220,12 +236,19 @@ class Character:
                 target.grants_advantage_to_next_attacker = False
                 print(f"** Guiding Bolt's advantage effect has expired. **")
 
+        # Apply grapple disadvantage if applicable
+        if grapple_disadvantage:
+            self.has_disadvantage = True
+
         attack_roll, _ = roll_d20(advantage=self.has_advantage, disadvantage=self.has_disadvantage)
         advantage_text = ""
         if self.has_advantage and not self.has_disadvantage:
             advantage_text = " (with advantage)"
         elif self.has_disadvantage and not self.has_advantage:
             advantage_text = " (with disadvantage)"
+        elif self.has_advantage and self.has_disadvantage:
+            advantage_text = " (advantage cancelled by disadvantage)"
+        
         self.has_advantage = False
         self.has_disadvantage = False
 
@@ -317,6 +340,7 @@ class Character:
             target.take_damage(total_damage, attacker=self)
         else:
             print("The attack misses.")
+
     def make_spell_attack(self, target, spell, action_type="ACTION"):
         if not self.is_alive:
             return False, False  # (hit, is_crit)
