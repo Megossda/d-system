@@ -323,14 +323,14 @@ class GiantConstrictorSnake(Enemy):
             action_target = chosen_actions.get('action_target')
             
             # SPECIAL HANDLING: Check if AI wants to crush grappled target
-            if (isinstance(action, str) and action == 'crush_grappled_target'):
+            if isinstance(action, str) and action == 'crush_grappled_target':
                 # Special action: crush the grappled target
-                self.crush_grappled_target("ACTION")
+                success = self.crush_grappled_target("ACTION")
+                if success:
+                    self.has_used_action = True
             else:
                 # Normal action execution
                 action.execute(self, action_target, "ACTION")
-            self.has_used_action = True
+                self.has_used_action = True
         else:
             print("ACTION: (None)")
-
-        print("REACTION: (Not used)")

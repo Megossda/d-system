@@ -36,6 +36,16 @@ class PaladinAIBrain(AIBrain):
         # --- HEALING ASSESSMENT ---
         healing_priority = self._assess_healing_priority(character, combatants, resource_status, survival_status)
 
+        # --- CHANNEL DIVINITY ASSESSMENT ---
+        channel_divinity_decision = self._assess_channel_divinity_usage(character, grapple_decision)
+        
+        # Use Channel Divinity if beneficial (as bonus action)
+        if channel_divinity_decision['should_use'] and not bonus_action:
+            if channel_divinity_decision['option'] == 'Peerless Athlete':
+                # Set up to use Peerless Athlete
+                character._use_peerless_athlete = True
+                print(f"[CHANNEL DIVINITY] {character.name}: {channel_divinity_decision['reason']}")
+
         # --- TACTICAL RETREAT ASSESSMENT (only if not grappled) ---
         retreat_decision = {'should_retreat': False}
         if not character.is_grappled:
@@ -57,11 +67,12 @@ class PaladinAIBrain(AIBrain):
             elif healing_priority['use_lay_on_hands']:
                 loh_action = self._get_lay_on_hands_action(character)
                 if loh_action:
-                    action = loh_action  # Use as ACTION instead of bonus action for emergency
+                    # FIXED: For emergency, use Lay on Hands as ACTION, not bonus action
+                    action = loh_action  # This uses the ACTION slot
                     action_target = healing_priority['heal_target']
                     character._ai_has_made_critical_decision = True
                     character._critical_decision_reason = "EMERGENCY HEALING - Using Lay on Hands as action"
-                    print(f"[EMERGENCY AI] {character.name}: CRITICAL SURVIVAL - Using emergency Lay on Hands!")
+                    print(f"[EMERGENCY AI] {character.name}: CRITICAL SURVIVAL - Using emergency Lay on Hands as ACTION!")
             
             # SAFETY CHECK: Ensure we have valid targets for emergency healing
             if not action_target:
@@ -94,13 +105,20 @@ class PaladinAIBrain(AIBrain):
                     print(f"[HEALING AI] {character.name}: Critical healing! Using Lay on Hands.")
 
         # PRIORITY 4: Moderate healing (only as bonus action)
-        if healing_priority['moderate_healing_needed'] and not bonus_action:
-            if healing_priority['use_lay_on_hands']:
-                loh_action = self._get_lay_on_hands_action(character)
-                if loh_action:
-                    bonus_action = loh_action
-                    bonus_action_target = healing_priority['heal_target']
-                    print(f"[HEALING AI] {character.name}: Moderate healing, using Lay on Hands.")
+                if healing_priority['moderate_healing_needed'] and not bonus_action:
+                    if healing_priority['use_lay_on_hands']:
+                        loh_action = self._get_lay_on_hands_action(character)
+                        if loh_action:
+                            bonus_action = loh_action
+                            bonus_action_target = healing_priority['heal_target']
+                            print(f"[HEALING AI] {character.name}: Moderate healing, using Lay on Hands.")
+
+        # PRIORITY 4.5: Channel Divinity usage (Peerless Athlete)
+        if hasattr(character, '_use_peerless_athlete') and character._use_peerless_athlete and not bonus_action:
+                    # Use Peerless Athlete - call it directly and mark bonus action as used
+                    if character.use_peerless_athlete():
+                        character._use_peerless_athlete = False
+                        print(f"[CHANNEL DIVINITY] {character.name}: Used Peerless Athlete for grapple escape advantage!")
 
         # PRIORITY 5: Tactical retreat logic (only if not grappled and no action chosen)
         if retreat_decision['should_retreat'] and not action and not resource_status['conserve_slots']:
@@ -439,6 +457,10 @@ class PaladinAIBrain(AIBrain):
         
         # Peerless Athlete for grapple escape
         if grapple_decision['should_escape']:
+            # FIXED: Check if Peerless Athlete is already active
+            if getattr(character, 'peerless_athlete_active', False):
+                return {'should_use': False, 'option': None, 'reason': 'Peerless Athlete already active (1 hour duration)'}
+            
             # Check if we have Peerless Athlete available
             if hasattr(character, 'channel_divinity_options'):
                 for option in character.channel_divinity_options:
