@@ -135,37 +135,43 @@ class GrappleConditionManager:
 
     @staticmethod
     def validate_grapple_state(creature):
-        """
-        Validate and clean up invalid grapple states.
-        Should be called during turn processing.
-        CRITICAL FIX: Added incapacitation handling.
-        """
+        """FIXED: Now properly handles incapacitation."""
         # CRITICAL FIX: Check for incapacitation first
         is_incap = GrappleConditionManager.is_incapacitated(creature)
-        print(f"DEBUG: {creature.name} incapacitation check: {is_incap}")
         
         if is_incap:
-            print(f"DEBUG: {creature.name} is incapacitated, checking grappling state...")
+            print(f"DEBUG: {creature.name} is incapacitated, ending all grapples...")
             if GrappleConditionManager.has_grappling_condition(creature):
                 target = getattr(creature, 'grapple_target', None)
                 print(f"DEBUG: {creature.name} has grappling condition, target: {target.name if target else None}")
+                
                 if target:
                     print(f"** {creature.name} becomes incapacitated - all grapples end immediately! **")
+                    print(f"DEBUG: About to call end_grapple with target")
                     GrappleConditionManager.end_grapple(creature, target)
-                    print(f"DEBUG: Grapple ended, returning early")
-                    return  # Early return after handling incapacitation
-            else:
-                print(f"DEBUG: {creature.name} is incapacitated but not grappling anyone")
-                return  # Early return - no grapples to end
-
-        print(f"DEBUG: {creature.name} not incapacitated, proceeding with normal validation")
+                    print(f"DEBUG: end_grapple completed")
+                else:
+                    print(f"** {creature.name} becomes incapacitated - cleaning up invalid grapple state! **")
+                    
+                    import gc
+                    for obj in gc.get_objects():
+                        if (hasattr(obj, 'is_grappled') and getattr(obj, 'is_grappled', False) and 
+                            hasattr(obj, 'grappler') and getattr(obj, 'grappler', None) == creature):
+                            print(f"** Found grappled target {obj.name}, releasing... **")
+                            print(f"DEBUG: About to call end_grapple with found target")
+                            GrappleConditionManager.end_grapple(creature, obj)
+                            print(f"DEBUG: end_grapple completed with found target")
+                            return
+                    
+                    print(f"** No grappled target found, cleaning up grappler state only **")
+                    GrappleConditionManager.remove_grappling_condition(creature)
+            return
 
         # Clean up grappling state
         if GrappleConditionManager.has_grappling_condition(creature):
             target = getattr(creature, 'grapple_target', None)
             if not target or not target.is_alive or not GrappleConditionManager.has_grappled_condition(target):
                 print(f"** Invalid grappling state detected for {creature.name}, cleaning up **")
-                # FIXED: Use end_grapple instead of just removing grappling condition
                 if target:
                     GrappleConditionManager.end_grapple(creature, target)
                 else:
@@ -176,7 +182,6 @@ class GrappleConditionManager:
             grappler = getattr(creature, 'grappler', None)
             if not grappler or not grappler.is_alive or not GrappleConditionManager.has_grappling_condition(grappler):
                 print(f"** Invalid grappled state detected for {creature.name}, cleaning up **")
-                # FIXED: Use end_grapple instead of just removing grappled condition
                 if grappler:
                     GrappleConditionManager.end_grapple(grappler, creature)
                 else:
@@ -185,23 +190,32 @@ class GrappleConditionManager:
     @staticmethod
     def end_grapple(grappler, target):
         """
-        Properly end a grapple between two creatures.
+        CRITICAL FIX: Properly end a grapple between two creatures.
         Cleans up both sides of the relationship.
         """
+        print(f"DEBUG: end_grapple called - grappler: {grappler.name}, target: {target.name}")
+        
         # CRITICAL FIX: Call the creature's own release_grapple method if it exists
         if hasattr(grappler, 'release_grapple'):
+            print(f"DEBUG: Using {grappler.name}'s release_grapple method")
             grappler.release_grapple(target)
         else:
+            print(f"DEBUG: Using manual cleanup for {grappler.name}")
             # Fallback to manual cleanup
             # Remove creature-specific conditions first (like Restrained for Giant Octopus)
             if hasattr(target, 'is_restrained'):
+                print(f"DEBUG: Removing restrained condition from {target.name}")
                 target.is_restrained = False
                 print(f"** {target.name} is no longer restrained **")
             
             # Remove standard grapple conditions from TARGET
+            print(f"DEBUG: Removing grappled condition from {target.name}")
             GrappleConditionManager.remove_grappled_condition(target)
             
             # Remove grappling condition from GRAPPLER  
+            print(f"DEBUG: Removing grappling condition from {grappler.name}")
             GrappleConditionManager.remove_grappling_condition(grappler)
             
             print(f"** Grapple between {grappler.name} and {target.name} has ended **")
+        
+        print(f"DEBUG: end_grapple finished - grappler.is_grappling: {getattr(grappler, 'is_grappling', 'NONE')}, target.is_grappled: {getattr(target, 'is_grappled', 'NONE')}")

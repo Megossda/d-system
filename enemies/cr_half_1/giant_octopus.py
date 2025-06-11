@@ -171,16 +171,18 @@ class GiantOctopus(Enemy):
         return True
 
     def release_grapple(self, target=None):
-        """Release the grappled target."""
-        if self.is_grappling and self.grapple_target:
-            target_to_release = target or self.grapple_target
+        """Release the grappled target using GLOBAL SYSTEM."""
+        target_to_release = target or self.grapple_target
+        
+        if target_to_release:
+            print(f"DEBUG: Octopus releasing {target_to_release.name}")
             
             # Remove octopus-specific condition first (Restrained)
             if hasattr(target_to_release, 'is_restrained'):
                 target_to_release.is_restrained = False
                 print(f"** {target_to_release.name} is no longer restrained **")
             
-            # Remove standard grapple conditions
+            # Remove standard grapple conditions from TARGET
             if hasattr(target_to_release, 'is_grappled'):
                 target_to_release.is_grappled = False
             if hasattr(target_to_release, 'grappler'):
@@ -190,11 +192,13 @@ class GiantOctopus(Enemy):
             
             print(f"** {target_to_release.name} is no longer grappled **")
             
-            # Update octopus state
+            # Remove grappling condition from OCTOPUS
             self.is_grappling = False
             self.grapple_target = None
             
             print(f"** {self.name} releases {target_to_release.name} from its tentacles **")
+        else:
+            print(f"DEBUG: Octopus has no target to release")
 
     def ink_cloud_reaction(self, action_type="REACTION"):
         """
