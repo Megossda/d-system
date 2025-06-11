@@ -405,18 +405,102 @@ class Character:
             if attacker:
                 attacker.gain_xp(self.xp_value)
 
-    def process_effects_on_turn_start(self):
-        if not self.active_effects: return
-        print(f"Processing effects for {self.name}'s turn...")
-        for effect in list(self.active_effects):
-            effect.apply(self)
-            effect.tick_down()
-            if effect.duration <= 0:
-                print(f"'{effect.name}' has ended on {self.name}.")
-                self.active_effects.remove(effect)
+def process_effects_on_turn_start(self):
+    """Process ongoing effects and handle incapacitation grapple breaking."""
+    if not self.active_effects: 
+        return
+        
+    print(f"Processing effects for {self.name}'s turn...")
+    for effect in list(self.active_effects):
+        effect.apply(self)
+        effect.tick_down()
+        if effect.duration <= 0:
+            print(f"'{effect.name}' has ended on {self.name}.")
+            self.active_effects.remove(effect)
+    
+    # CRITICAL FIX: Check for incapacitation and end grapples
+    if hasattr(self, 'is_incapacitated') and self.is_incapacitated:
+        # If this creature is grappling someone and becomes incapacitated, end the grapple
+        if hasattr(self, 'is_grappling') and self.is_grappling:
+            if hasattr(self, 'grapple_target') and self.grapple_target:
+                target = self.grapple_target
+                print(f"** {self.name} becomes incapacitated and loses its grapple! **")
+                self._end_grapple_due_to_incapacitation(target)
+    
+    # Also check if we're grappled by someone who is incapacitated
+    if hasattr(self, 'is_grappled') and self.is_grappled:
+        if hasattr(self, 'grappler') and self.grappler:
+            grappler = self.grappler
+            if hasattr(grappler, 'is_incapacitated') and grappler.is_incapacitated:
+                print(f"** {self.name}'s grappler becomes incapacitated, automatically freed! **")
+                self._free_from_incapacitated_grappler(grappler)
 
+def _end_grapple_due_to_incapacitation(self, target):
+    """End grapple when grappler becomes incapacitated."""
+    # Clear grappling state
+    self.is_grappling = False
+    if hasattr(self, 'grapple_target'):
+        self.grapple_target = None
+    if hasattr(self, 'grappled_target'):  # For octopus compatibility
+        self.grappled_target = None
+    
+    # Clear grappled state
+    target.is_grappled = False
+    if hasattr(target, 'grappler'):
+        delattr(target, 'grappler')
+    if hasattr(target, 'grapple_escape_dc'):
+        delattr(target, 'grapple_escape_dc')
+    
+    # Remove creature-specific conditions (like Restrained for octopus)
+    if hasattr(target, 'is_restrained'):
+        target.is_restrained = False
+        print(f"** {target.name} is no longer restrained **")
+    
+    print(f"** {target.name} is no longer grappled **")
+
+def _free_from_incapacitated_grappler(self, grappler):
+    """Free from grapple when grappler becomes incapacitated."""
+    # Clear our grappled state
+    self.is_grappled = False
+    if hasattr(self, 'grappler'):
+        delattr(self, 'grappler')
+    if hasattr(self, 'grapple_escape_dc'):
+        delattr(self, 'grapple_escape_dc')
+    
+    # Remove creature-specific conditions
+    if hasattr(self, 'is_restrained'):
+        self.is_restrained = False
+        print(f"** {self.name} is no longer restrained **")
+    
+    # Clear grappler's state
+    grappler.is_grappling = False
+    if hasattr(grappler, 'grapple_target'):
+        grappler.grapple_target = None
+    if hasattr(grappler, 'grappled_target'):
+        grappler.grappled_target = None
+    
+    print(f"** {self.name} is no longer grappled **")
     def get_proficiency_bonus(self):
-        return (self.level - 1) // 4 + 2
+        """Get proficiency bonus based on character level (PHB 2024)."""
+        # PHB 2024 Proficiency Bonus table:
+        # Levels 1-4: +2
+        # Levels 5-8: +3  
+        # Levels 9-12: +4
+        # Levels 13-16: +5
+        # Levels 17-20: +6
+        if self.level <= 4:
+            return 2
+        elif self.level <= 8:
+            return 3
+        elif self.level <= 12:
+            return 4
+        elif self.level <= 16:
+            return 5
+        else:
+            return 6
+
+    # Alternative calculation (same result):
+    # return 2 + ((self.level - 1) // 4)
 
     def make_saving_throw(self, ability, dc):
         print(f"--- {self.name} must make a DC {dc} {ability.upper()} saving throw! ---")

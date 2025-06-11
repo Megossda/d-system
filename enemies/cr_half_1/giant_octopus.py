@@ -74,7 +74,7 @@ class GiantOctopus(Enemy):
     def tentacle_attack(self, target, action_type="ACTION"):
         """
         Octopus tentacle attack - PHB 2024 rules.
-        Uses attack roll, 10ft reach, grapples one creature with all tentacles.
+        Uses attack roll, 10ft reach, grapples ONE creature with ALL tentacles.
         """
         if not self.is_alive or not target or not target.is_alive:
             return False
@@ -100,6 +100,7 @@ class GiantOctopus(Enemy):
         print(f"TENTACLES: {self.name} attacks {target.name} (AC: {target.ac}) with Tentacles!")
 
         # Make attack roll (PHB 2024: Melee Attack Roll +5)
+        from core import roll_d20, get_ability_modifier
         attack_roll, _ = roll_d20()
         
         # Check if target is restrained (gives advantage to attacks against it)
@@ -125,6 +126,7 @@ class GiantOctopus(Enemy):
                 print("The tentacle attack hits!")
 
             # Deal damage first
+            from core import roll
             damage = roll(self.equipped_weapon.damage_dice)
             if is_crit:
                 crit_damage = roll(self.equipped_weapon.damage_dice)
@@ -144,13 +146,13 @@ class GiantOctopus(Enemy):
             return False
 
     def _apply_octopus_grapple(self, target):
-        """Apply octopus-specific grapple with PHB 2024 rules."""
+        """Apply octopus-specific grapple with PHB 2024 rules - SINGLE TARGET ONLY."""
         # PHB 2024: Escape DC 13 (fixed, not calculated)
         escape_dc = 13
         
         # Apply grapple condition
         self.is_grappling = True
-        self.grappled_target = target
+        self.grappled_target = target  # Use grappled_target for octopus
         target.is_grappled = True
         target.grappler = self
         target.grapple_escape_dc = escape_dc
@@ -263,7 +265,7 @@ class GiantOctopus(Enemy):
             self.release_grapple()
 
     def take_turn(self, combatants):
-        """Override take_turn to handle octopus-specific actions."""
+        """Override take_turn to handle octopus-specific actions - PHB 2024 COMPLIANT."""
         self.has_used_action = False
         self.has_used_bonus_action = False
         
@@ -303,7 +305,7 @@ class GiantOctopus(Enemy):
         # Bonus action (octopus doesn't have bonus actions in PHB 2024)
         print("BONUS ACTION: (None)")
 
-        # Handle octopus actions - ONLY Tentacles action exists
+        # Handle octopus actions - ONLY Tentacles action exists (PHB 2024)
         action = chosen_actions.get('action')
         if action and not self.has_used_action:
             action_target = chosen_actions.get('action_target')
@@ -323,6 +325,7 @@ class GiantOctopus(Enemy):
 
         print("REACTION: (Not used)")
 
+    
     def __str__(self):
         """Enhanced string representation with grapple info."""
         base_info = super().__str__()

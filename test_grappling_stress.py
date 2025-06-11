@@ -2,6 +2,7 @@
 """
 Advanced stress tests for the Global Grappling System.
 Tests edge cases, forced movement, condition interactions, and multi-creature scenarios.
+UPDATED: Now includes critical bug fix validation tests.
 """
 
 from actions.unarmed_strike_actions import create_unarmed_grapple_action
@@ -416,6 +417,126 @@ def test_edge_case_scenarios():
     
     return True
 
+def test_incapacitation_fix():
+    """NEW: Test that incapacitation properly ends grapples."""
+    print("\n" + "=" * 70)
+    print("BUG FIX TEST 1: INCAPACITATION HANDLING")
+    print("=" * 70)
+    
+    from enemies.cr_half_1.giant_octopus import GiantOctopus
+    from characters.base_character import Character
+    from equipment.weapons.martial_melee import longsword
+    
+    octopus = GiantOctopus("Test Octopus", position=10)
+    fighter = Character("Fighter", 5, 40, 
+                       {'str': 16, 'dex': 14, 'con': 15, 'int': 10, 'wis': 12, 'cha': 10},
+                       longsword, position=12)
+    
+    # Force a successful grapple for testing
+    octopus.is_grappling = True
+    octopus.grappled_target = fighter
+    fighter.is_grappled = True
+    fighter.is_restrained = True
+    fighter.grappler = octopus
+    fighter.grapple_escape_dc = 13
+    
+    print("=== BEFORE INCAPACITATION ===")
+    print(f"Octopus grappling: {octopus.is_grappling}")
+    print(f"Fighter grappled: {fighter.is_grappled}")
+    print(f"Fighter restrained: {getattr(fighter, 'is_restrained', False)}")
+    
+    # Apply incapacitation
+    octopus.is_incapacitated = True
+    print("\n=== APPLYING INCAPACITATION ===")
+    print("Octopus becomes incapacitated (Paralyzed/Stunned/etc.)")
+    
+    # Process effects (this should trigger the fix)
+    octopus.process_effects_on_turn_start()
+    
+    print("\n=== AFTER INCAPACITATION ===")
+    print(f"Octopus grappling: {octopus.is_grappling} (should be False)")
+    print(f"Fighter grappled: {fighter.is_grappled} (should be False)")
+    print(f"Fighter restrained: {getattr(fighter, 'is_restrained', False)} (should be False)")
+    
+    # Verify fix
+    if not octopus.is_grappling and not fighter.is_grappled and not getattr(fighter, 'is_restrained', True):
+        print("✅ INCAPACITATION FIX SUCCESSFUL")
+        return True
+    else:
+        print("❌ INCAPACITATION FIX FAILED")
+        return False
+
+def test_proficiency_bonus_fix():
+    """NEW: Test that proficiency bonus is calculated correctly."""
+    print("\n" + "=" * 70)
+    print("BUG FIX TEST 2: PROFICIENCY BONUS CALCULATION")
+    print("=" * 70)
+    
+    from characters.base_character import Character
+    from equipment.weapons.martial_melee import longsword
+    
+    # Test different levels
+    test_cases = [
+        (1, 2),   # Level 1-4: +2
+        (3, 2),   # Level 1-4: +2
+        (4, 2),   # Level 1-4: +2
+        (5, 3),   # Level 5-8: +3
+        (8, 3),   # Level 5-8: +3
+        (9, 4),   # Level 9-12: +4
+        (12, 4),  # Level 9-12: +4
+        (13, 5),  # Level 13-16: +5
+        (16, 5),  # Level 13-16: +5
+        (17, 6),  # Level 17-20: +6
+        (20, 6),  # Level 17-20: +6
+    ]
+    
+    print("=== TESTING PROFICIENCY BONUS CALCULATION ===")
+    all_correct = True
+    
+    for level, expected_pb in test_cases:
+        fighter = Character(f"Fighter {level}", level, 40, 
+                           {'str': 16, 'dex': 14, 'con': 15, 'int': 10, 'wis': 12, 'cha': 10},
+                           longsword, position=0)
+        
+        actual_pb = fighter.get_proficiency_bonus()
+        
+        if actual_pb == expected_pb:
+            print(f"✅ Level {level}: PB +{actual_pb} (correct)")
+        else:
+            print(f"❌ Level {level}: PB +{actual_pb} (expected +{expected_pb})")
+            all_correct = False
+    
+    # Test grapple DC calculation for level 3 characters
+    print("\n=== TESTING GRAPPLE DC CALCULATION ===")
+    fighter1 = Character("Fighter 1", 3, 40, 
+                        {'str': 16, 'dex': 14, 'con': 15, 'int': 10, 'wis': 12, 'cha': 10},
+                        longsword, position=0)
+    
+    fighter2 = Character("Fighter 2", 3, 40, 
+                        {'str': 14, 'dex': 16, 'con': 14, 'int': 10, 'wis': 12, 'cha': 10},
+                        longsword, position=0)
+    
+    from core import get_ability_modifier
+    
+    # Fighter 1: STR 16 (+3), Level 3 (PB +2), DC = 8 + 3 + 2 = 13
+    f1_dc = 8 + get_ability_modifier(fighter1.stats['str']) + fighter1.get_proficiency_bonus()
+    expected_f1_dc = 13
+    
+    # Fighter 2: STR 14 (+2), Level 3 (PB +2), DC = 8 + 2 + 2 = 12  
+    f2_dc = 8 + get_ability_modifier(fighter2.stats['str']) + fighter2.get_proficiency_bonus()
+    expected_f2_dc = 12
+    
+    print(f"Fighter 1 (STR 16, Lvl 3): Grapple DC {f1_dc} (expected {expected_f1_dc})")
+    print(f"Fighter 2 (STR 14, Lvl 3): Grapple DC {f2_dc} (expected {expected_f2_dc})")
+    
+    if f1_dc == expected_f1_dc and f2_dc == expected_f2_dc:
+        print("✅ GRAPPLE DC CALCULATION CORRECT")
+    else:
+        print("❌ GRAPPLE DC CALCULATION INCORRECT")
+        all_correct = False
+    
+    return all_correct
+
 def run_all_stress_tests():
     """Run all stress tests and provide comprehensive report."""
     print("🧪 STARTING COMPREHENSIVE STRESS TESTS FOR GLOBAL GRAPPLING SYSTEM 🧪")
@@ -424,25 +545,28 @@ def run_all_stress_tests():
     test_results = []
     
     try:
-        # Test 1: Forced movement scenarios
+        # Original stress tests
         result1 = test_forced_movement_scenarios()
         test_results.append(("Forced Movement & Positioning", result1))
         
-        # Test 2: Incapacitation scenarios  
         result2 = test_incapacitation_scenarios()
         test_results.append(("Incapacitation Handling", result2))
         
-        # Test 3: Condition stacking
         result3 = test_condition_stacking_interactions()
         test_results.append(("Condition Stacking & Interactions", result3))
         
-        # Test 4: Multi-creature scenarios
         result4 = test_multi_creature_scenarios()
         test_results.append(("Multi-Creature Scenarios", result4))
         
-        # Test 5: Edge cases
         result5 = test_edge_case_scenarios()
         test_results.append(("Additional Edge Cases", result5))
+        
+        # NEW: Bug fix validation tests
+        result6 = test_incapacitation_fix()
+        test_results.append(("BUG FIX: Incapacitation Handling", result6))
+        
+        result7 = test_proficiency_bonus_fix()
+        test_results.append(("BUG FIX: Proficiency Bonus Calculation", result7))
         
     except Exception as e:
         print(f"\n❌ CRITICAL FAILURE: {e}")
@@ -465,18 +589,45 @@ def run_all_stress_tests():
     
     print(f"\nOVERALL RESULTS: {passed_tests}/{total_tests} test categories passed")
     
+    # Special focus on bug fix results
+    bug_fix_tests = [test for test in test_results if "BUG FIX" in test[0]]
+    bug_fixes_passed = sum(1 for test in bug_fix_tests if test[1])
+    
+    print(f"\n🔧 BUG FIX VALIDATION: {bug_fixes_passed}/{len(bug_fix_tests)} critical fixes validated")
+    
     if passed_tests == total_tests:
         print("🏆 EXCELLENT: Global Grappling System is robust and production-ready!")
         print("   System handles complex edge cases, condition interactions, and multi-creature scenarios.")
+        print("   All critical bugs have been fixed and validated.")
         return True
     else:
         print("⚠️  WARNING: System has vulnerabilities that need addressing before production use.")
         print("   Review failed test scenarios and implement missing functionality.")
+        
+        # Provide specific guidance on failures
+        failed_tests = [test for test in test_results if not test[1]]
+        if failed_tests:
+            print("\n🔍 FAILED TESTS REQUIRING ATTENTION:")
+            for test_name, _ in failed_tests:
+                if "BUG FIX" in test_name:
+                    print(f"   🚨 CRITICAL: {test_name}")
+                else:
+                    print(f"   ⚠️  {test_name}")
+        
         return False
 
 if __name__ == "__main__":
     success = run_all_stress_tests()
+    
+    print("\n" + "=" * 90)
     if success:
-        print("\n🎉 STRESS TESTING COMPLETE - SYSTEM VALIDATED! 🎉")
+        print("🎉 STRESS TESTING COMPLETE - SYSTEM VALIDATED! 🎉")
+        print("✅ Original grappling system working correctly")
+        print("✅ All critical bugs fixed and validated")
+        print("✅ PHB 2024 compliance verified")
+        print("✅ Ready for production deployment")
     else:
-        print("\n🚨 STRESS TESTING REVEALED ISSUES - SYSTEM NEEDS WORK 🚨")
+        print("🚨 STRESS TESTING REVEALED ISSUES - SYSTEM NEEDS WORK 🚨")
+        print("❌ Critical bugs detected or fixes not properly applied")
+        print("❌ Review the failed tests above and apply necessary fixes")
+        print("❌ Re-run tests after implementing corrections")

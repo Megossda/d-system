@@ -28,7 +28,7 @@ class GiantOctopusAI(IntelligenceBasedAI):
                 'bonus_action_target': None
             }
 
-        # Priority 2: If already grappling, attack the same target again
+        # Priority 2: If already grappling, attack the same target again (PHB 2024)
         elif character.is_grappling and character.grappled_target and character.grappled_target.is_alive:
             grappled_target = character.grappled_target
             print(f"[OCTOPUS TACTICS] Already grappling {grappled_target.name}, attacking again with Tentacles")
