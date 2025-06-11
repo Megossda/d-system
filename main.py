@@ -1,7 +1,7 @@
 # main.py
 from characters.paladin import Paladin
 from characters.subclasses.paladin_oaths import OathOfGlory
-from enemies import Goblin, HobgoblinWarrior, GiantConstrictorSnake
+from enemies import Goblin, HobgoblinWarrior, GiantConstrictorSnake, GiantOctopus
 from equipment.weapons.martial_melee import longsword
 from equipment.armor.heavy import chain_mail
 from equipment.armor.shields import shield
@@ -28,6 +28,11 @@ if __name__ == "__main__":
             "name": "Giant Constrictor Snake",
             "class": GiantConstrictorSnake,
             "description": "CR 2 - Tough challenge with grappling and multiattack"
+        },
+        "4": {
+            "name": "Giant Octopus", 
+            "class": GiantOctopus,
+            "description": "CR 1 - Multi-grappling beast with 8 tentacles and ink cloud"
         }
     }
 

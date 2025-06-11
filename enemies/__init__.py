@@ -3,15 +3,7 @@
 
 from .cr_0_quarter.goblin import Goblin
 from .cr_half_1.hobgoblin_warrior import HobgoblinWarrior
+from .cr_half_1.giant_octopus import GiantOctopus
 from .cr_2_5.giant_constrictor_snake import GiantConstrictorSnake
 
-__all__ = ['Goblin', 'HobgoblinWarrior', 'GiantConstrictorSnake']
-
-
-
-
-
-
-
-
-
+__all__ = ['Goblin', 'HobgoblinWarrior', 'GiantOctopus', 'GiantConstrictorSnake']
