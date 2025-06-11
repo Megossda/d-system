@@ -1,13 +1,12 @@
 # File: enemies/cr_half_1/giant_octopus.py
 from ..base_enemy import Enemy
 from equipment.weapons.base_weapon import Weapon
-from systems.grappling import UniversalGrappling, UniversalGrappleActions
 from core import roll_d20, get_ability_modifier, roll
-from actions.special_actions import MultiattackAction
+from actions.base_actions import AttackAction
 
 
 class GiantOctopus(Enemy):
-    """A Giant Octopus - CR 1 challenge using Universal Grappling System - PHB 2024."""
+    """A Giant Octopus - CR 1 challenge using PHB 2024 rules."""
 
     def __init__(self, name="Giant Octopus", position=0):
         # Natural weapons for the octopus
@@ -22,7 +21,7 @@ class GiantOctopus(Enemy):
         super().__init__(
             name=name,
             level=1,  # Minimal level for compatibility
-            hp=45,  # 7d10 + 7
+            hp=45,  # 7d10 + 7 (PHB 2024 stat block)
             stats={'str': 17, 'dex': 13, 'con': 13, 'int': 5, 'wis': 10, 'cha': 4},
             weapon=tentacles,
             armor=None,  # Natural AC
@@ -33,29 +32,31 @@ class GiantOctopus(Enemy):
             speed=10  # 10 ft. land, 60 ft. swim (simplified for our system)
         )
 
-        from ai.enemy_ai.beast.giant_octopus_ai import GiantOctopusAI
-        self.ai_brain = GiantOctopusAI()
+        # Import AI after class is defined to avoid circular imports
+        try:
+            from ai.enemy_ai.beast.giant_octopus_ai import GiantOctopusAI
+            self.ai_brain = GiantOctopusAI()
+        except ImportError:
+            # Fallback to base AI if octopus AI not available
+            from ai.base_ai import AIBrain
+            self.ai_brain = AIBrain()
         
         # Octopus-specific traits
         self.size = 'Large'
         self.can_breathe_underwater = True
         self.ink_cloud_used = False  # Track 1/day ink cloud usage
         
-        # Octopus can grapple multiple targets with its 8 tentacles
-        self.grappled_targets = []  # Track multiple grapples
-        self.max_tentacles = 8
+        # PHB 2024: Octopus grapples ONE creature with ALL tentacles
+        self.grappled_target = None  # Single target, not multiple
+        self.is_grappling = False
         
-        # Add universal grapple action using our new system
-        tentacle_grapple = UniversalGrappleActions.create_grapple_attack_action(
-            damage_dice="2d6",
-            save_dc=None,  # Will be calculated: 8 + STR(+3) + Prof(+2) = 13
-            attack_name="Tentacles",
-            damage_type="Bludgeoning",
-            range_ft=10,
-            method="attack"  # PHB 2024: Uses attack roll, not save
-        )
-        
-        self.available_actions.append(tentacle_grapple)
+        # Try to setup Global Grappling System if available
+        try:
+            from systems.grappling.grapple_manager import setup_creature_grappling
+            setup_creature_grappling(self, 'giant_octopus')
+        except ImportError:
+            # Global grappling system not available, use basic functionality
+            pass
 
     def calculate_ac(self):
         """Override AC calculation for natural armor"""
@@ -67,16 +68,10 @@ class GiantOctopus(Enemy):
 
     def tentacle_attack(self, target, action_type="ACTION"):
         """
-        Octopus tentacle attack using Universal Grappling System.
-        PHB 2024: Attack roll, 10ft reach, grapples Medium or smaller creatures.
+        Octopus tentacle attack - PHB 2024 rules.
+        Uses attack roll, 10ft reach, grapples one creature with all tentacles.
         """
         if not self.is_alive or not target or not target.is_alive:
-            return False
-
-        # Check if we can grapple more targets
-        active_grapples = len([t for t in self.grappled_targets if t and t.is_alive])
-        if active_grapples >= self.max_tentacles:
-            print(f"{action_type}: {self.name} has all tentacles occupied (max {self.max_tentacles})!")
             return False
 
         # Check target size (PHB 2024: Medium or smaller)
@@ -91,15 +86,73 @@ class GiantOctopus(Enemy):
             print(f"TENTACLES: {self.name} tries to attack {target.name}, but is out of range (distance: {distance}ft, reach: 10ft)")
             return False
 
+        # PHB 2024: Can only grapple one creature at a time with all tentacles
+        if self.is_grappling and self.grappled_target and self.grappled_target != target:
+            print(f"TENTACLES: {self.name} is already grappling {self.grappled_target.name} with all eight tentacles!")
+            print(f"Cannot grapple {target.name} - must attack current target or release first")
+            return False
+
         print(f"TENTACLES: {self.name} attacks {target.name} (AC: {target.ac}) with Tentacles!")
 
+        # Try to use Global Grappling System if available
+        try:
+            from systems.grappling.grapple_manager import GlobalGrappleManager
+            
+            escape_dc = GlobalGrappleManager.get_grapple_escape_dc(self)
+            
+            success = GlobalGrappleManager.attempt_grapple(
+                attacker=self,
+                target=target,
+                save_dc=escape_dc,
+                damage_dice="2d6",
+                damage_type="Bludgeoning",
+                attack_name="Tentacles",
+                range_ft=10,
+                method="attack"  # PHB 2024: Uses attack roll
+            )
+            
+            if success and target.is_alive:
+                # Check if this is a new grapple (not already grappling this target)
+                if not self.is_grappling or self.grappled_target != target:
+                    # Update octopus state FIRST
+                    self.is_grappling = True
+                    self.grappled_target = target
+                    
+                    # Apply octopus-specific additional condition (Restrained)
+                    if not hasattr(target, 'is_restrained') or not target.is_restrained:
+                        target.is_restrained = True
+                        print(f"** {target.name} also has the Restrained condition! **")
+                        print(f"** Restrained: Speed 0, Advantage on attacks against it, Disadvantage on DEX saves **")
+                    
+                    print(f"** {self.name} has entangled {target.name} with ALL EIGHT tentacles **")
+                else:
+                    print(f"** {self.name} continues grappling {target.name} and deals additional damage **")
+            
+            return success
+            
+        except ImportError:
+            # Fallback to basic attack if Global Grappling System not available
+            return self._basic_tentacle_attack(target, action_type)
+
+    def _basic_tentacle_attack(self, target, action_type="ACTION"):
+        """Fallback tentacle attack without Global Grappling System."""
         # Make attack roll (PHB 2024: Melee Attack Roll +5)
         attack_roll, _ = roll_d20()
+        
+        # Check if target is restrained (gives advantage to attacks against it)
+        has_advantage = hasattr(target, 'is_restrained') and target.is_restrained
+        if has_advantage:
+            # Reroll for advantage
+            second_roll, _ = roll_d20()
+            attack_roll = max(attack_roll, second_roll)
+            print(f"** Attack has Advantage (target is Restrained) - using higher of two rolls **")
+        
         attack_modifier = get_ability_modifier(self.stats['str'])  # +3
         prof_bonus = self.get_proficiency_bonus()  # +2
         total_attack = attack_roll + attack_modifier + prof_bonus  # Should be +5
 
-        print(f"ATTACK ROLL: {attack_roll} (1d20) +{attack_modifier} (STR) +{prof_bonus} (Prof) = {total_attack}")
+        advantage_text = " (with Advantage)" if has_advantage else ""
+        print(f"ATTACK ROLL: {attack_roll} (1d20{advantage_text}) +{attack_modifier} (STR) +{prof_bonus} (Prof) = {total_attack}")
 
         if total_attack >= target.ac or attack_roll == 20:
             is_crit = (attack_roll == 20)
@@ -119,84 +172,74 @@ class GiantOctopus(Enemy):
             print(f"{self.name} deals {total_damage} bludgeoning damage ({damage} [{self.equipped_weapon.damage_dice}{'+ crit' if is_crit else ''}] +{attack_modifier} [STR])")
             target.take_damage(total_damage, attacker=self)
 
-            # Apply grapple if target survives
-            if target.is_alive:
-                return self._apply_octopus_grapple(target)
+            # Apply grapple if target survives AND octopus isn't already grappling
+            if target.is_alive and not self.is_grappling:
+                return self._apply_basic_octopus_grapple(target)
+            return True
         else:
             print("The tentacle attack misses.")
             return False
 
-    def _apply_octopus_grapple(self, target):
-        """Apply octopus-specific grapple using universal system."""
+    def _apply_basic_octopus_grapple(self, target):
+        """Apply octopus-specific grapple without Global Grappling System."""
         # Calculate escape DC: 8 + STR mod + Prof = 8 + 3 + 2 = 13
         escape_dc = 8 + get_ability_modifier(self.stats['str']) + self.get_proficiency_bonus()
         
-        # Apply standard grapple using universal system
-        success = UniversalGrappling._apply_grapple_condition(self, target, escape_dc)
+        # Apply grapple condition
+        self.is_grappling = True
+        self.grappled_target = target
+        target.is_grappled = True
+        target.grappler = self
+        target.grapple_escape_dc = escape_dc
         
-        if success:
-            # Track this grapple for multi-target management
-            self.grappled_targets.append(target)
-            
-            # PHB 2024: Octopus grapple also applies Restrained condition
-            self._apply_restrained_condition(target)
-            
-            print(f"** {self.name} is grappling {target.name} with {len(self.grappled_targets)} of {self.max_tentacles} tentacles **")
+        print(f"** {target.name} is GRAPPLED by {self.name}! **")
+        print(f"** {target.name} has the Grappled condition: Speed 0, disadvantage on attacks vs others **")
+        print(f"** Escape DC: {escape_dc} (STR Athletics or DEX Acrobatics check) **")
         
-        return success
-
-    def _apply_restrained_condition(self, target):
-        """Apply Restrained condition (PHB 2024: Grappled targets are also Restrained)."""
+        # PHB 2024: Octopus grapple also applies Restrained condition
         target.is_restrained = True
         print(f"** {target.name} also has the Restrained condition! **")
         print(f"** Restrained: Speed 0, Advantage on attacks against it, Disadvantage on DEX saves **")
-
-    def _remove_restrained_condition(self, target):
-        """Remove Restrained condition when grapple ends."""
-        if hasattr(target, 'is_restrained'):
-            target.is_restrained = False
-            print(f"** {target.name} is no longer restrained **")
-
-    def squeeze_grappled_targets(self, action_type="ACTION"):
-        """
-        Squeeze all grappled targets (alternative to new tentacle attacks).
-        This represents the octopus tightening its grip on all grappled creatures.
-        """
-        if not self.grappled_targets:
-            print(f"{action_type}: {self.name} has no grappled targets to squeeze!")
-            return False
-
-        # Filter out dead/invalid targets
-        valid_targets = [t for t in self.grappled_targets if t and t.is_alive and hasattr(t, 'is_grappled') and t.is_grappled]
         
-        if not valid_targets:
-            print(f"{action_type}: {self.name} has no valid targets to squeeze!")
-            self.grappled_targets = []  # Clear invalid targets
-            return False
-
-        print(f"{action_type}: {self.name} squeezes all grappled creatures with its tentacles!")
+        print(f"** {self.name} has entangled {target.name} with ALL EIGHT tentacles **")
         
-        for target in valid_targets:
-            # Deal damage to each grappled target
-            damage = roll("2d6")
-            total_damage = damage + get_ability_modifier(self.stats['str'])
-            
-            print(f"** {target.name} takes {total_damage} bludgeoning damage ({damage} [2d6] +{get_ability_modifier(self.stats['str'])} [STR]) **")
-            target.take_damage(total_damage, attacker=self)
-
-        print(f"** All grappled targets remain grappled and restrained! **")
         return True
 
-    def release_grapple(self, target):
-        """Release a specific grappled target (octopus choice)."""
-        if target in self.grappled_targets:
-            self.grappled_targets.remove(target)
+    def release_grapple(self, target=None):
+        """Release the grappled target."""
+        if self.is_grappling and self.grappled_target:
+            target_to_release = target or self.grappled_target
             
-            # Use universal system to clean up grapple
-            UniversalGrappling._free_from_grapple(target, self)
-            self._remove_restrained_condition(target)
+            # Try to use Global Grappling System if available
+            try:
+                from systems.grappling.grapple_manager import GlobalGrappleManager
+                
+                # Remove octopus-specific condition first (Restrained)
+                if hasattr(target_to_release, 'is_restrained'):
+                    target_to_release.is_restrained = False
+                    print(f"** {target_to_release.name} is no longer restrained **")
+                
+                # Use Global Grappling System to end grapple
+                GlobalGrappleManager.end_grapple(self, target_to_release)
+                
+            except ImportError:
+                # Fallback cleanup without Global Grappling System
+                if hasattr(target_to_release, 'is_grappled'):
+                    target_to_release.is_grappled = False
+                if hasattr(target_to_release, 'is_restrained'):
+                    target_to_release.is_restrained = False
+                if hasattr(target_to_release, 'grappler'):
+                    delattr(target_to_release, 'grappler')
+                if hasattr(target_to_release, 'grapple_escape_dc'):
+                    delattr(target_to_release, 'grapple_escape_dc')
+                
+                print(f"** {target_to_release.name} is no longer grappled or restrained **")
             
-            print(f"** {self.name} releases {target.name} from its tentacles **")
+            # Update octopus state
+            self.is_grappling = False
+            self.grappled_target = None
+            
+            print(f"** {self.name} releases {target_to_release.name} from its tentacles **")
 
     def ink_cloud_reaction(self, action_type="REACTION"):
         """
@@ -215,26 +258,47 @@ class GiantOctopus(Enemy):
         
         # Mark ink cloud as used
         self.ink_cloud_used = True
-        
-        # In a full implementation, this would create an area effect
-        # For now, just log the effect
         return True
 
     def process_effects_on_turn_start(self):
-        """Process ongoing effects and clean up invalid grapples."""
+        """Process ongoing effects and validate grapples."""
         super().process_effects_on_turn_start()
 
-        # Clean up invalid grapples
-        valid_targets = []
-        for target in self.grappled_targets:
-            if target and target.is_alive and hasattr(target, 'is_grappled') and target.is_grappled:
-                valid_targets.append(target)
-            else:
-                print(f"** {self.name} releases invalid grapple target **")
-                if target:
-                    self._remove_restrained_condition(target)
+        # Process Searing Smite ongoing damage (if any)
+        if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
+            effect = self.searing_smite_effect
+            dice_count = effect['dice_count']
+            save_dc = effect['save_dc']
+            caster = effect['caster']
+            
+            # Deal ongoing fire damage
+            ongoing_damage = 0
+            for _ in range(dice_count):
+                ongoing_damage += roll('1d6')
+            
+            print(f"** {self.name} takes {ongoing_damage} fire damage ({dice_count}d6) from Searing Smite! **")
+            self.take_damage(ongoing_damage, attacker=caster)
+            
+            # Constitution saving throw to end the effect
+            if self.is_alive:
+                print(f"** {self.name} makes a Constitution saving throw to extinguish the flames **")
+                if self.make_saving_throw('con', save_dc):
+                    print(f"** {self.name} succeeds and extinguishes the searing flames! **")
+                    self.searing_smite_effect['active'] = False
+                    del self.searing_smite_effect
+                else:
+                    print(f"** {self.name} fails and continues burning! **")
 
-        self.grappled_targets = valid_targets
+        # Try to validate grapple state using Global System if available
+        try:
+            from systems.grappling.grapple_conditions import GrappleConditionManager
+            GrappleConditionManager.validate_grapple_state(self)
+        except ImportError:
+            # Basic validation without Global System
+            if self.is_grappling and (not self.grappled_target or not self.grappled_target.is_alive):
+                print(f"** {self.name} releases its grapple (target no longer valid) **")
+                self.is_grappling = False
+                self.grappled_target = None
 
     def take_damage(self, damage, attacker=None):
         """Override to handle grapple breaking on death and ink cloud reaction."""
@@ -245,11 +309,10 @@ class GiantOctopus(Enemy):
             print(f"** {self.name} triggers Ink Cloud reaction! **")
             self.ink_cloud_reaction("REACTION")
 
-        # If the octopus dies, release all grappled targets
-        if not self.is_alive and self.grappled_targets:
-            print(f"** {self.name} dies and releases all grappled creatures! **")
-            for target in self.grappled_targets[:]:  # Copy list to avoid modification during iteration
-                self.release_grapple(target)
+        # If the octopus dies, release grappled target
+        if not self.is_alive and self.is_grappling:
+            print(f"** {self.name} dies and releases its grappled creature! **")
+            self.release_grapple()
 
     def take_turn(self, combatants):
         """Override take_turn to handle octopus-specific actions."""
@@ -258,6 +321,13 @@ class GiantOctopus(Enemy):
         
         # Store combatants reference
         self.current_combatants = combatants
+        
+        # Try to validate all grapples at start of turn if Global System available
+        try:
+            from systems.grappling.grapple_manager import GlobalGrappleManager
+            GlobalGrappleManager.validate_all_grapples(combatants)
+        except ImportError:
+            pass
         
         chosen_actions = self.ai_brain.choose_actions(self, combatants)
 
@@ -271,7 +341,7 @@ class GiantOctopus(Enemy):
             action = chosen_actions.get('action')
             
             # Basic movement for attacks
-            if isinstance(action, AttackAction) or isinstance(action, str):
+            if isinstance(action, str) and action == 'tentacle_attack':
                 current_distance = abs(self.position - defender.position) if defender else 0
                 
                 # If too far for tentacle attack (10ft reach), move closer
@@ -292,24 +362,19 @@ class GiantOctopus(Enemy):
         # Bonus action (octopus doesn't have bonus actions in PHB 2024)
         print("BONUS ACTION: (None)")
 
-        # Handle special octopus actions
+        # Handle octopus actions - ONLY Tentacles action exists
         action = chosen_actions.get('action')
         if action and not self.has_used_action:
             action_target = chosen_actions.get('action_target')
             
-            # Handle special octopus actions
-            if isinstance(action, str):
-                if action == 'tentacle_attack':
-                    if action_target:
-                        success = self.tentacle_attack(action_target, "ACTION")
-                        if success:
-                            self.has_used_action = True
-                elif action == 'squeeze_grappled_targets':
-                    success = self.squeeze_grappled_targets("ACTION")
+            # Handle octopus Tentacles action
+            if isinstance(action, str) and action == 'tentacle_attack':
+                if action_target:
+                    success = self.tentacle_attack(action_target, "ACTION")
                     if success:
                         self.has_used_action = True
             else:
-                # Normal action execution
+                # Normal action execution (should only be AttackAction with tentacles)
                 action.execute(self, action_target, "ACTION")
                 self.has_used_action = True
         else:
@@ -317,21 +382,21 @@ class GiantOctopus(Enemy):
 
         print("REACTION: (Not used)")
 
-    def can_grapple_more_targets(self):
-        """Check if octopus can grapple additional targets."""
-        active_grapples = len([t for t in self.grappled_targets if t and t.is_alive])
-        return active_grapples < self.max_tentacles
-
     def __str__(self):
         """Enhanced string representation with grapple info."""
         base_info = super().__str__()
         
-        if self.grappled_targets:
-            active_grapples = len([t for t in self.grappled_targets if t and t.is_alive])
-            grapple_info = f"\nGrappling: {active_grapples}/{self.max_tentacles} tentacles in use"
+        if self.is_grappling and self.grappled_target:
+            grapple_info = f"\nGrappling: {self.grappled_target.name} with all 8 tentacles"
             base_info += grapple_info
         
         if self.ink_cloud_used:
             base_info += "\nInk Cloud: Used (1/Day)"
+        
+        try:
+            if hasattr(self, 'grapple_profile'):
+                base_info += f"\nGrapple Profile: {self.grapple_profile.creature_name} (Global System)"
+        except:
+            pass
         
         return base_info
