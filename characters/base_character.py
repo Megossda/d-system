@@ -1,5 +1,6 @@
 from core import roll_d20, roll, get_ability_modifier, XP_FOR_NEXT_LEVEL, XP_FROM_CR
 from actions import AttackAction, DodgeAction, OpportunityAttack, CastSpellAction
+from actions.unarmed_strike_actions import create_unarmed_damage_action, create_unarmed_grapple_action
 from ai.base_ai import AIBrain
 import math
 
@@ -46,7 +47,12 @@ class Character:
         self.has_used_action = False
         self.has_used_bonus_action = False
         self.has_used_reaction = False
-        self.available_actions = [AttackAction(self.equipped_weapon), DodgeAction()]
+        self.available_actions = [
+            AttackAction(self.equipped_weapon), 
+            DodgeAction(),
+            create_unarmed_damage_action(),
+            create_unarmed_grapple_action()
+        ]
         self.available_bonus_actions = []
         self.available_reactions = [OpportunityAttack()]
         self.active_effects = []

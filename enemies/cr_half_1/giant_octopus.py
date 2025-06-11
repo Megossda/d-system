@@ -28,9 +28,12 @@ class GiantOctopus(Enemy):
             shield=None,
             cr='1',  # CR 1 for Giant Octopus
             position=position,
-            initiative_bonus=0,
+            initiative_bonus=1,  # PHB 2024: DEX modifier (+1)
             speed=10  # 10 ft. land, 60 ft. swim (simplified for our system)
         )
+        
+        # PHB 2024: Add skill proficiencies after initialization
+        self.skill_proficiencies = ['Perception', 'Stealth']
 
         # Import AI after class is defined to avoid circular imports
         try:
@@ -41,22 +44,24 @@ class GiantOctopus(Enemy):
             from ai.base_ai import AIBrain
             self.ai_brain = AIBrain()
         
-        # Octopus-specific traits
+        # Octopus-specific traits (PHB 2024)
         self.size = 'Large'
         self.can_breathe_underwater = True
+        self.water_breathing = True
+        self.breath_holding_time = 60  # 1 hour outside water (in minutes)
+        self.darkvision = 60  # 60 ft. darkvision
+        self.passive_perception = 14  # 10 + Perception skill (+4)
         self.ink_cloud_used = False  # Track 1/day ink cloud usage
+        
+        # Custom skill bonuses to match PHB 2024 stat block
+        self.custom_skill_bonuses = {
+            'Perception': 4,   # PHB 2024: +4 (suggests expertise or special bonus)
+            'Stealth': 5       # PHB 2024: +5 (suggests expertise or special bonus)
+        }
         
         # PHB 2024: Octopus grapples ONE creature with ALL tentacles
         self.grappled_target = None  # Single target, not multiple
         self.is_grappling = False
-        
-        # Try to setup Global Grappling System if available
-        try:
-            from systems.grappling.grapple_manager import setup_creature_grappling
-            setup_creature_grappling(self, 'giant_octopus')
-        except ImportError:
-            # Global grappling system not available, use basic functionality
-            pass
 
     def calculate_ac(self):
         """Override AC calculation for natural armor"""
@@ -94,48 +99,6 @@ class GiantOctopus(Enemy):
 
         print(f"TENTACLES: {self.name} attacks {target.name} (AC: {target.ac}) with Tentacles!")
 
-        # Try to use Global Grappling System if available
-        try:
-            from systems.grappling.grapple_manager import GlobalGrappleManager
-            
-            escape_dc = GlobalGrappleManager.get_grapple_escape_dc(self)
-            
-            success = GlobalGrappleManager.attempt_grapple(
-                attacker=self,
-                target=target,
-                save_dc=escape_dc,
-                damage_dice="2d6",
-                damage_type="Bludgeoning",
-                attack_name="Tentacles",
-                range_ft=10,
-                method="attack"  # PHB 2024: Uses attack roll
-            )
-            
-            if success and target.is_alive:
-                # Check if this is a new grapple (not already grappling this target)
-                if not self.is_grappling or self.grappled_target != target:
-                    # Update octopus state FIRST
-                    self.is_grappling = True
-                    self.grappled_target = target
-                    
-                    # Apply octopus-specific additional condition (Restrained)
-                    if not hasattr(target, 'is_restrained') or not target.is_restrained:
-                        target.is_restrained = True
-                        print(f"** {target.name} also has the Restrained condition! **")
-                        print(f"** Restrained: Speed 0, Advantage on attacks against it, Disadvantage on DEX saves **")
-                    
-                    print(f"** {self.name} has entangled {target.name} with ALL EIGHT tentacles **")
-                else:
-                    print(f"** {self.name} continues grappling {target.name} and deals additional damage **")
-            
-            return success
-            
-        except ImportError:
-            # Fallback to basic attack if Global Grappling System not available
-            return self._basic_tentacle_attack(target, action_type)
-
-    def _basic_tentacle_attack(self, target, action_type="ACTION"):
-        """Fallback tentacle attack without Global Grappling System."""
         # Make attack roll (PHB 2024: Melee Attack Roll +5)
         attack_roll, _ = roll_d20()
         
@@ -172,18 +135,18 @@ class GiantOctopus(Enemy):
             print(f"{self.name} deals {total_damage} bludgeoning damage ({damage} [{self.equipped_weapon.damage_dice}{'+ crit' if is_crit else ''}] +{attack_modifier} [STR])")
             target.take_damage(total_damage, attacker=self)
 
-            # Apply grapple if target survives AND octopus isn't already grappling
-            if target.is_alive and not self.is_grappling:
-                return self._apply_basic_octopus_grapple(target)
+            # Apply grapple if target survives AND octopus isn't already grappling this target
+            if target.is_alive:
+                return self._apply_octopus_grapple(target)
             return True
         else:
             print("The tentacle attack misses.")
             return False
 
-    def _apply_basic_octopus_grapple(self, target):
-        """Apply octopus-specific grapple without Global Grappling System."""
-        # Calculate escape DC: 8 + STR mod + Prof = 8 + 3 + 2 = 13
-        escape_dc = 8 + get_ability_modifier(self.stats['str']) + self.get_proficiency_bonus()
+    def _apply_octopus_grapple(self, target):
+        """Apply octopus-specific grapple with PHB 2024 rules."""
+        # PHB 2024: Escape DC 13 (fixed, not calculated)
+        escape_dc = 13
         
         # Apply grapple condition
         self.is_grappling = True
@@ -210,30 +173,20 @@ class GiantOctopus(Enemy):
         if self.is_grappling and self.grappled_target:
             target_to_release = target or self.grappled_target
             
-            # Try to use Global Grappling System if available
-            try:
-                from systems.grappling.grapple_manager import GlobalGrappleManager
-                
-                # Remove octopus-specific condition first (Restrained)
-                if hasattr(target_to_release, 'is_restrained'):
-                    target_to_release.is_restrained = False
-                    print(f"** {target_to_release.name} is no longer restrained **")
-                
-                # Use Global Grappling System to end grapple
-                GlobalGrappleManager.end_grapple(self, target_to_release)
-                
-            except ImportError:
-                # Fallback cleanup without Global Grappling System
-                if hasattr(target_to_release, 'is_grappled'):
-                    target_to_release.is_grappled = False
-                if hasattr(target_to_release, 'is_restrained'):
-                    target_to_release.is_restrained = False
-                if hasattr(target_to_release, 'grappler'):
-                    delattr(target_to_release, 'grappler')
-                if hasattr(target_to_release, 'grapple_escape_dc'):
-                    delattr(target_to_release, 'grapple_escape_dc')
-                
-                print(f"** {target_to_release.name} is no longer grappled or restrained **")
+            # Remove octopus-specific condition first (Restrained)
+            if hasattr(target_to_release, 'is_restrained'):
+                target_to_release.is_restrained = False
+                print(f"** {target_to_release.name} is no longer restrained **")
+            
+            # Remove standard grapple conditions
+            if hasattr(target_to_release, 'is_grappled'):
+                target_to_release.is_grappled = False
+            if hasattr(target_to_release, 'grappler'):
+                delattr(target_to_release, 'grappler')
+            if hasattr(target_to_release, 'grapple_escape_dc'):
+                delattr(target_to_release, 'grapple_escape_dc')
+            
+            print(f"** {target_to_release.name} is no longer grappled **")
             
             # Update octopus state
             self.is_grappling = False
@@ -289,16 +242,11 @@ class GiantOctopus(Enemy):
                 else:
                     print(f"** {self.name} fails and continues burning! **")
 
-        # Try to validate grapple state using Global System if available
-        try:
-            from systems.grappling.grapple_conditions import GrappleConditionManager
-            GrappleConditionManager.validate_grapple_state(self)
-        except ImportError:
-            # Basic validation without Global System
-            if self.is_grappling and (not self.grappled_target or not self.grappled_target.is_alive):
-                print(f"** {self.name} releases its grapple (target no longer valid) **")
-                self.is_grappling = False
-                self.grappled_target = None
+        # Basic grapple validation
+        if self.is_grappling and (not self.grappled_target or not self.grappled_target.is_alive):
+            print(f"** {self.name} releases its grapple (target no longer valid) **")
+            self.is_grappling = False
+            self.grappled_target = None
 
     def take_damage(self, damage, attacker=None):
         """Override to handle grapple breaking on death and ink cloud reaction."""
@@ -321,13 +269,6 @@ class GiantOctopus(Enemy):
         
         # Store combatants reference
         self.current_combatants = combatants
-        
-        # Try to validate all grapples at start of turn if Global System available
-        try:
-            from systems.grappling.grapple_manager import GlobalGrappleManager
-            GlobalGrappleManager.validate_all_grapples(combatants)
-        except ImportError:
-            pass
         
         chosen_actions = self.ai_brain.choose_actions(self, combatants)
 
@@ -392,11 +333,5 @@ class GiantOctopus(Enemy):
         
         if self.ink_cloud_used:
             base_info += "\nInk Cloud: Used (1/Day)"
-        
-        try:
-            if hasattr(self, 'grapple_profile'):
-                base_info += f"\nGrapple Profile: {self.grapple_profile.creature_name} (Global System)"
-        except:
-            pass
         
         return base_info

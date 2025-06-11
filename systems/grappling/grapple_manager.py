@@ -7,6 +7,7 @@ This is the central hub that all creatures use for grappling interactions.
 from .universal_grapple import UniversalGrappling
 from .grapple_conditions import GrappleConditionManager
 from .grapple_actions import UniversalGrappleActions
+from actions.unarmed_strike_actions import create_unarmed_grapple_action
 from core import get_ability_modifier
 
 
@@ -221,13 +222,18 @@ def setup_creature_grappling(creature, profile_name=None):
         profile.apply_to_creature(creature)
         print(f"Applied grapple profile '{profile_name}' to {creature.name}")
     else:
+        # For humanoids, use proper PHB 2024 unarmed strikes
+        if profile_name and 'humanoid' in profile_name.lower():
+            creature.available_actions.append(create_unarmed_grapple_action())
+            print(f"Applied PHB 2024 unarmed grapple to {creature.name}")
         # Auto-detect based on creature type/name
-        if 'Octopus' in creature.name:
+        elif 'Octopus' in creature.name:
             setup_creature_grappling(creature, 'giant_octopus')
         elif 'Snake' in creature.name and 'Constrictor' in creature.name:
             setup_creature_grappling(creature, 'giant_constrictor_snake')
         elif hasattr(creature, 'creature_type') and creature.creature_type == 'Humanoid':
-            setup_creature_grappling(creature, 'humanoid_unarmed')
+            creature.available_actions.append(create_unarmed_grapple_action())
+            print(f"Applied PHB 2024 unarmed grapple to humanoid {creature.name}")
         else:
             # Default profile
             profile = CreatureGrappleProfile(
