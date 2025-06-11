@@ -60,7 +60,7 @@ class GiantOctopus(Enemy):
         }
         
         # PHB 2024: Octopus grapples ONE creature with ALL tentacles
-        self.grappled_target = None  # Single target, not multiple
+        self.grapple_target = None  # Single target, not multiple
         self.is_grappling = False
 
     def calculate_ac(self):
@@ -92,8 +92,8 @@ class GiantOctopus(Enemy):
             return False
 
         # PHB 2024: Can only grapple one creature at a time with all tentacles
-        if self.is_grappling and self.grappled_target and self.grappled_target != target:
-            print(f"TENTACLES: {self.name} is already grappling {self.grappled_target.name} with all eight tentacles!")
+        if self.is_grappling and self.grapple_target and self.grapple_target != target:
+            print(f"TENTACLES: {self.name} is already grappling {self.grapple_target.name} with all eight tentacles!")
             print(f"Cannot grapple {target.name} - must attack current target or release first")
             return False
 
@@ -152,7 +152,7 @@ class GiantOctopus(Enemy):
         
         # Apply grapple condition
         self.is_grappling = True
-        self.grappled_target = target  # Use grappled_target for octopus
+        self.grapple_target = target  # FIXED: Use grapple_target for global system compatibility
         target.is_grappled = True
         target.grappler = self
         target.grapple_escape_dc = escape_dc
@@ -172,8 +172,8 @@ class GiantOctopus(Enemy):
 
     def release_grapple(self, target=None):
         """Release the grappled target."""
-        if self.is_grappling and self.grappled_target:
-            target_to_release = target or self.grappled_target
+        if self.is_grappling and self.grapple_target:
+            target_to_release = target or self.grapple_target
             
             # Remove octopus-specific condition first (Restrained)
             if hasattr(target_to_release, 'is_restrained'):
@@ -192,7 +192,7 @@ class GiantOctopus(Enemy):
             
             # Update octopus state
             self.is_grappling = False
-            self.grappled_target = None
+            self.grapple_target = None
             
             print(f"** {self.name} releases {target_to_release.name} from its tentacles **")
 
@@ -216,8 +216,16 @@ class GiantOctopus(Enemy):
         return True
 
     def process_effects_on_turn_start(self):
-        """Process ongoing effects and validate grapples."""
+        """Process ongoing effects and validate grapples using GLOBAL SYSTEM."""
         super().process_effects_on_turn_start()
+
+        # CRITICAL FIX: Use global grappling system for validation
+        from systems.grappling.grapple_conditions import GrappleConditionManager
+        GrappleConditionManager.validate_grapple_state(self)
+        
+        # CRITICAL FIX: Also validate the target's grapple state
+        if hasattr(self, 'grapple_target') and self.grapple_target:
+            GrappleConditionManager.validate_grapple_state(self.grapple_target)
 
         # Process Searing Smite ongoing damage (if any)
         if hasattr(self, 'searing_smite_effect') and self.searing_smite_effect.get('active', False):
@@ -243,12 +251,6 @@ class GiantOctopus(Enemy):
                     del self.searing_smite_effect
                 else:
                     print(f"** {self.name} fails and continues burning! **")
-
-        # Basic grapple validation
-        if self.is_grappling and (not self.grappled_target or not self.grappled_target.is_alive):
-            print(f"** {self.name} releases its grapple (target no longer valid) **")
-            self.is_grappling = False
-            self.grappled_target = None
 
     def take_damage(self, damage, attacker=None):
         """Override to handle grapple breaking on death and ink cloud reaction."""
@@ -330,8 +332,8 @@ class GiantOctopus(Enemy):
         """Enhanced string representation with grapple info."""
         base_info = super().__str__()
         
-        if self.is_grappling and self.grappled_target:
-            grapple_info = f"\nGrappling: {self.grappled_target.name} with all 8 tentacles"
+        if self.is_grappling and self.grapple_target:
+            grapple_info = f"\nGrappling: {self.grapple_target.name} with all 8 tentacles"
             base_info += grapple_info
         
         if self.ink_cloud_used:
