@@ -1,16 +1,22 @@
-class Spell:
-    """A base class for all spells."""
-    def __init__(self, name, level, school, casting_time="1 Action", requires_concentration=False, damage_type=None, attack_save="None"):
+# File: spells/base_spell.py
+"""Base spell class."""
+
+class BaseSpell:
+    """Base class for all spells."""
+    
+    def __init__(self, name, level, school, casting_time="1 Action", 
+                 range_type="60 feet", components="V, S", duration="Instantaneous",
+                 damage_type=None, save_type=None):
         self.name = name
         self.level = level
         self.school = school
         self.casting_time = casting_time
-        self.requires_concentration = requires_concentration
+        self.range_type = range_type
+        self.components = components
+        self.duration = duration
         self.damage_type = damage_type
-        self.attack_save = attack_save
-
-    def cast(self, caster, target=None):
-        """The primary effect of casting the spell."""
-        # This method is meant to be overridden by each specific spell.
-        raise NotImplementedError("Each spell must have its own 'cast' method.")
-
+        self.save_type = save_type
+    
+    def cast(self, caster, targets, spell_level, action_type="ACTION"):
+        """Cast the spell - must be overridden."""
+        raise NotImplementedError("Each spell must implement cast method")

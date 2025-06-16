@@ -1,8 +1,6 @@
-"""Magic system - spells organized by level and school."""
+# File: systems/spells/__init__.py
+"""Spell system."""
 
-# Import commonly used spells
-from .level_1.cure_wounds import cure_wounds
-from .level_1.guiding_bolt import guiding_bolt
-from .level_1.searing_smite import searing_smite
+from .spell_manager import SpellManager
 
-__all__ = ['cure_wounds', 'guiding_bolt', 'searing_smite']
+__all__ = ['SpellManager']
